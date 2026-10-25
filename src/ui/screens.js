@@ -1,16 +1,19 @@
 // Écrans par-dessus le jeu : accueil, connexion, salon, fin de manche, podium, pause
 import { PLAYER_COLORS } from '../render/colors.js';
+import { SKINS } from '../game/skins.js';
 import { ITEM_INFO, img, escapeHtml } from './hud.js';
 
 const SCREENS = ['menu', 'connecting', 'lobby', 'round-end', 'podium', 'pause', 'end'];
 const $ = (id) => document.getElementById(id);
 
-export function createScreens() {
+export function createScreens({ portraits = {}, onSkin } = {}) {
   const overlay = $('overlay');
+  const card = overlay.querySelector('.card');
   const title = $('result');
   const subtitle = $('subtitle');
   const nameInput = $('name');
   const codeInput = $('code');
+  let current = null;
 
   // Légende des bonus
   $('legend').innerHTML = Object.entries(ITEM_INFO)
@@ -34,16 +37,45 @@ export function createScreens() {
   const invited = new URLSearchParams(location.search).get('salon');
   if (invited) codeInput.value = invited.toUpperCase().slice(0, 4);
 
+  // Sélecteur de personnage (accueil et salon)
+  function renderPicker(el, selected) {
+    el.innerHTML = SKINS.map(
+      (s) => `<button type="button" class="skin ${s.id === selected ? 'on' : ''}" data-skin="${s.id}" aria-pressed="${s.id === selected}">
+        ${portraits[s.id] ? `<img src="${portraits[s.id]}" alt="">` : '<span class="ph"></span>'}
+        <b>${s.name}</b><small>${s.kind}</small>
+      </button>`,
+    ).join('');
+  }
+  for (const el of [$('skin-picker'), $('lobby-skins')]) {
+    el.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-skin]');
+      if (btn) onSkin?.(btn.dataset.skin);
+    });
+  }
+
   function show(name, { title: t = 'Kaboom Arena', sub = '', color = '' } = {}) {
+    const changed = overlay.hidden || current !== name;
     overlay.hidden = false;
     for (const id of SCREENS) $(id).hidden = id !== name;
     title.textContent = t;
     title.style.color = color;
     subtitle.textContent = sub;
+    current = name;
+    // Petite animation d'entrée quand on change d'écran
+    if (changed) {
+      card.classList.remove('enter');
+      void card.offsetWidth;
+      card.classList.add('enter');
+    }
   }
 
+  const avatar = (skin, color) =>
+    portraits[skin]
+      ? `<img class="avatar" src="${portraits[skin]}" alt="" style="border-color:${color}">`
+      : `<span class="dot" style="background:${color}"></span>`;
+
   const memberLine = (m, you, hostId, extra = '') => `<li>
-      <span class="dot" style="background:${PLAYER_COLORS[m.color]}"></span>
+      ${avatar(m.skin, PLAYER_COLORS[m.color])}
       <span class="who">${escapeHtml(m.name)}${m.id === you ? ' <em>(toi)</em>' : ''}</span>
       ${m.id === hostId ? '<span class="tag">Hôte</span>' : ''}
       ${m.bot ? '<span class="tag">IA</span>' : ''}
@@ -60,9 +92,10 @@ export function createScreens() {
     show,
     hide() {
       overlay.hidden = true;
+      current = null;
     },
     current() {
-      return overlay.hidden ? null : SCREENS.find((id) => !$(id).hidden);
+      return overlay.hidden ? null : current;
     },
     get name() {
       return nameInput.value.trim() || 'Joueur';
@@ -73,6 +106,13 @@ export function createScreens() {
     focusName() {
       nameInput.focus();
     },
+    setMenuSkin(skin) {
+      renderPicker($('skin-picker'), skin);
+    },
+    setSettings({ muted, high }) {
+      $('toggle-sound').textContent = muted ? 'Son : coupé' : 'Son : activé';
+      $('toggle-quality').textContent = high ? 'Graphismes : qualité haute' : 'Graphismes : qualité basse';
+    },
 
     lobby(lobby, you) {
       show('lobby', { title: 'Salon', sub: 'Partage le code ou le lien à tes amis (2 à 4 joueurs)' });
@@ -80,6 +120,8 @@ export function createScreens() {
       const rows = lobby.members.map((m) => memberLine(m, you, lobby.hostId));
       for (let i = lobby.members.length; i < 4; i++) rows.push('<li class="empty">Place libre</li>');
       $('lobby-players').innerHTML = rows.join('');
+      const me = lobby.members.find((m) => m.id === you);
+      renderPicker($('lobby-skins'), me?.skin);
       const isHost = lobby.hostId === you;
       $('host-controls').hidden = !isHost;
       $('lobby-wait').hidden = isHost;
@@ -113,7 +155,7 @@ export function createScreens() {
       $('podium-list').innerHTML = ranking
         .map((m, i) => `<li class="place-${i + 1}">
           <span class="rank">${places[i]}</span>
-          <span class="dot" style="background:${PLAYER_COLORS[m.color]}"></span>
+          ${avatar(m.skin, PLAYER_COLORS[m.color])}
           <span class="who">${escapeHtml(m.name)}${m.id === you ? ' <em>(toi)</em>' : ''}</span>
           <span class="score">${m.wins} manche${m.wins > 1 ? 's' : ''}</span>
         </li>`)

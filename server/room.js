@@ -3,6 +3,7 @@
 import { createGame, update, eliminate } from '../src/game/game.js';
 import { createBot } from '../src/game/bot.js';
 import { TICK } from '../src/game/constants.js';
+import { isSkin, randomSkin } from '../src/game/skins.js';
 
 export const MAX_PLAYERS = 4;
 export const WINS_TO_MATCH = 3; // le premier à 3 manches gagne
@@ -29,7 +30,7 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 export class Room {
   constructor(code) {
     this.code = code;
-    this.members = []; // { id, name, color, bot, ws, brain, queue, held, lastSeq, wins, pid }
+    this.members = []; // { id, name, color, skin, bot, ws, brain, queue, held, lastSeq, wins, pid }
     this.nextMemberId = 1;
     this.hostId = null;
     this.phase = 'lobby'; // 'lobby' | 'playing' | 'roundEnd' | 'podium'
@@ -53,10 +54,10 @@ export class Room {
 
   // ---------- Entrées / sorties ----------
 
-  addHuman(ws, name) {
+  addHuman(ws, name, skin) {
     if (this.phase !== 'lobby') return { error: 'La partie a déjà commencé dans ce salon.' };
     if (this.members.length >= MAX_PLAYERS) return { error: 'Ce salon est complet (4 joueurs).' };
-    const m = this.newMember({ name: cleanName(name), ws, bot: false });
+    const m = this.newMember({ name: cleanName(name), ws, bot: false, skin: isSkin(skin) ? skin : randomSkin() });
     if (this.hostId === null) this.hostId = m.id;
     return { member: m };
   }
@@ -65,7 +66,7 @@ export class Room {
     if (this.phase !== 'lobby' || this.members.length >= MAX_PLAYERS) return;
     const used = new Set(this.members.map((m) => m.name));
     const name = BOT_NAMES.find((n) => !used.has(n)) || 'IA';
-    this.newMember({ name, ws: null, bot: true });
+    this.newMember({ name, ws: null, bot: true, skin: randomSkin(this.members.map((m) => m.skin)) });
     this.broadcastLobby();
   }
 
@@ -75,9 +76,15 @@ export class Room {
     if (bot) this.removeMember(bot);
   }
 
-  newMember({ name, ws, bot }) {
+  setSkin(member, skin) {
+    if (this.phase !== 'lobby' || !isSkin(skin)) return;
+    member.skin = skin;
+    this.broadcastLobby();
+  }
+
+  newMember({ name, ws, bot, skin }) {
     const m = {
-      id: this.nextMemberId++, name, color: this.freeColor(), bot, ws,
+      id: this.nextMemberId++, name, color: this.freeColor(), skin, bot, ws,
       brain: null, queue: [], held: { dx: 0, dy: 0 }, lastSeq: -1, wins: 0, pid: null,
     };
     this.members.push(m);
@@ -136,6 +143,7 @@ export class Room {
       playerCount: this.members.length,
       seed: Math.floor(Math.random() * 1e9),
       colors: this.members.map((m) => m.color),
+      skins: this.members.map((m) => m.skin),
     });
     this.phase = 'playing';
     this.lastCells = '';
@@ -229,7 +237,7 @@ export class Room {
       lastRoundWinner: this.lastRoundWinner,
       roundPause: ROUND_PAUSE,
       members: this.members.map((m) => ({
-        id: m.id, name: m.name, color: m.color, bot: m.bot, wins: m.wins, pid: m.pid,
+        id: m.id, name: m.name, color: m.color, skin: m.skin, bot: m.bot, wins: m.wins, pid: m.pid,
       })),
     });
   }
@@ -247,6 +255,7 @@ export class Room {
       time: r3(s.time),
       phase: s.phase,
       winner: s.winner,
+      endTimer: s.endTimer === null ? null : r3(s.endTimer),
       sudden: !!s.sudden,
       cells: changed ? s.cells : undefined,
       players: s.players.map((p) => ({

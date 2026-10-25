@@ -45,8 +45,10 @@ export function createHud() {
   let last = '';
   let lastTimer = '';
   let toastTimeout = null;
+  let portraits = {};
 
   function showToast(html, color) {
+    toast.style.top = `${Math.round(document.getElementById('hud').getBoundingClientRect().bottom + 6)}px`;
     toast.innerHTML = html;
     toast.style.borderColor = color;
     toast.hidden = false;
@@ -69,8 +71,11 @@ export function createHud() {
     if (p.special) badges.push(img(p.special));
     if (p.iceBombs) badges.push(img('ice') + `<small>${p.iceBombs}</small>`);
     if (p.skull) badges.push(img('skull'));
+    const face = portraits[p.skin]
+      ? `<img class="avatar" src="${portraits[p.skin]}" alt="" style="border-color:${colorOf(p)}">`
+      : `<span class="dot" style="background:${colorOf(p)}"></span>`;
     return `<div class="player-tag ${p.alive ? '' : 'dead'}">
-      <span class="dot" style="background:${colorOf(p)}"></span>
+      ${face}
       <span class="name">${escapeHtml(ctx.nameOf(p.id))}</span>
       ${winDots(p.id)}
       <span class="stats">${img('bomb')}${p.maxBombs} ${img('flame')}${p.range}</span>
@@ -79,6 +84,10 @@ export function createHud() {
   }
 
   return {
+    setPortraits(p) {
+      portraits = p;
+      last = '';
+    },
     setContext(c) {
       ctx = { ...ctx, ...c };
       last = '';

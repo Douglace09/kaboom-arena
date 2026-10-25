@@ -33,8 +33,8 @@ wss.on('connection', (ws) => {
     member = null;
   }
 
-  function enter(target, name) {
-    const res = target.addHuman(ws, name);
+  function enter(target, name, skin) {
+    const res = target.addHuman(ws, name, skin);
     if (res.error) return reply({ t: 'error', message: res.error });
     room = target;
     member = res.member;
@@ -55,16 +55,19 @@ wss.on('connection', (ws) => {
         const code = makeCode(rooms);
         const r = new Room(code);
         rooms.set(code, r);
-        enter(r, msg.name);
+        enter(r, msg.name, msg.skin);
         break;
       }
       case 'join': {
         leave();
         const r = rooms.get(String(msg.code || '').toUpperCase().trim());
         if (!r) return reply({ t: 'error', message: 'Aucun salon avec ce code. Vérifie les 4 lettres.' });
-        enter(r, msg.name);
+        enter(r, msg.name, msg.skin);
         break;
       }
+      case 'skin':
+        if (room && member) room.setSkin(member, msg.skin);
+        break;
       case 'input':
         if (room && member) room.input(member, msg);
         break;

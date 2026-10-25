@@ -291,3 +291,88 @@ html, body {
   font-family: ui-monospace, monospace;
   user-select: text;
 }
+
+/* ---------- Rendu 2026 : menus animés, personnages, réglages ---------- */
+
+.hud-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.icon-btn {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+}
+.icon-btn:hover { background: rgba(255, 255, 255, 0.18); }
+.icon-btn:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; }
+
+.avatar {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: radial-gradient(circle at 50% 35%, #2c3354, #12162a);
+  object-fit: cover;
+}
+.player-tag .avatar { width: 22px; height: 22px; }
+.player-list .avatar, .podium .avatar { width: 34px; height: 34px; }
+.podium .place-1 .avatar { width: 42px; height: 42px; }
+
+.skin-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.card button.skin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 10px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.skin img, .skin .ph { width: 100%; max-width: 76px; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #2c3354, #12162a); }
+.skin b { font-size: 13px; }
+.skin small { font-size: 11px; opacity: 0.6; font-weight: 500; }
+.card button.skin:hover { transform: translateY(-2px); }
+.card button.skin.on { border-color: #35e0ff; background: rgba(53, 224, 255, 0.12); }
+
+.card button.small { padding: 9px 14px; font-size: 14px; }
+
+/* Titre et transitions d'écran */
+.card h1 {
+  background: linear-gradient(90deg, #35e0ff, #b48bff 50%, #ff4fa3);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.card h1[style*="color"] { background: none; }
+.card h1:not([style*="color"]) { color: transparent; }
+.card.enter { animation: card-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+#overlay { animation: fade-in 0.25s ease; backdrop-filter: blur(3px); }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.card button { transition: transform 0.12s ease, background 0.15s ease, box-shadow 0.15s ease; }
+.card button:not(:disabled):hover { transform: translateY(-1px); }
+.card button.primary:not(:disabled):hover { box-shadow: 0 6px 22px rgba(53, 224, 255, 0.35); }
+.card button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
+#toast:not([hidden]) { animation: toast-in 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px) scale(0.9); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .card.enter, #overlay, #toast:not([hidden]) { animation: none; }
+  .card button, .card button.skin { transition: none; }
+}
+@media (max-width: 420px) {
+  .skin small { display: none; }
+}
+
+/* Les commandes tactiles disparaissent quand un écran (menu, salon…) est affiché */
+#overlay:not([hidden]) ~ #touch { display: none; }

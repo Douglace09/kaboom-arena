@@ -11,7 +11,10 @@
     <div id="hud">
       <div id="players"></div>
       <div id="timer">2:00</div>
-      <div id="help"></div>
+      <div class="hud-right">
+        <div id="help"></div>
+        <button id="mute" class="icon-btn" aria-label="Couper le son" title="Son (M)"></button>
+      </div>
     </div>
 
     <div id="toast" hidden></div>
@@ -27,6 +30,10 @@
             <span>Ton pseudo</span>
             <input id="name" maxlength="14" autocomplete="nickname" placeholder="Ton pseudo" />
           </label>
+          <div class="field">
+            <span>Ton personnage</span>
+            <div id="skin-picker" class="skin-picker"></div>
+          </div>
 
           <h2>En ligne avec tes amis</h2>
           <button id="create" class="primary">Créer un salon</button>
@@ -43,6 +50,12 @@
 
           <h2>Bonus cachés dans les blocs</h2>
           <div id="legend"></div>
+
+          <h2>Réglages</h2>
+          <div class="row">
+            <button id="toggle-sound" class="small"></button>
+            <button id="toggle-quality" class="small"></button>
+          </div>
         </div>
 
         <!-- Connexion au serveur -->
@@ -60,6 +73,10 @@
             <button id="copy-link">Copier le lien d'invitation</button>
           </div>
           <ul id="lobby-players" class="player-list"></ul>
+          <div class="field">
+            <span>Ton personnage</span>
+            <div id="lobby-skins" class="skin-picker"></div>
+          </div>
           <div id="host-controls" class="buttons">
             <div class="row">
               <button id="add-bot">Ajouter une IA</button>

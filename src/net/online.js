@@ -131,14 +131,15 @@ export function createOnline({ onLobby, onJoined, onError, onClose }) {
       return lobby;
     },
     myPid,
-    async create(name) {
+    async create(name, skin) {
       await connect();
-      send({ t: 'create', name });
+      send({ t: 'create', name, skin });
     },
-    async join(code, name) {
+    async join(code, name, skin) {
       await connect();
-      send({ t: 'join', code, name });
+      send({ t: 'join', code, name, skin });
     },
+    setSkin: (skin) => send({ t: 'skin', skin }),
     start: () => send({ t: 'start' }),
     rematch: () => send({ t: 'rematch' }),
     addBot: () => send({ t: 'addBot' }),

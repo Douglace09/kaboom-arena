@@ -11,7 +11,8 @@ export const BASE_RANGE = 2; // portée d'explosion de départ (cases)
 export const BASE_BOMBS = 1; // bombes posables en même temps au départ
 export const BASE_SPEED = 3.5; // vitesse de départ (cases par seconde)
 export const BLOCK_DENSITY = 0.7; // part des cases libres remplies de blocs
-export const END_DELAY = 1.0; // délai avant d'annoncer le vainqueur (permet l'égalité)
+export const END_DELAY = 1.5; // délai avant d'annoncer le vainqueur (permet l'égalité)
+export const SLOWMO = 0.35; // ralenti pendant ce délai, après la dernière élimination
 
 // Bonus
 export const ITEM_CHANCE = 0.4; // chance qu'un bloc détruit laisse un bonus

@@ -1,10 +1,13 @@
-// Point d'entrée : relie la logique, l'affichage, les commandes, le réseau et les écrans
+// Point d'entrée : relie la logique, l'affichage, les sons, les commandes, le réseau et les écrans
 import './style.css';
 import { createGame, update } from './game/game.js';
 import { createBot } from './game/bot.js';
 import { TICK } from './game/constants.js';
+import { SKINS, SKIN_IDS, isSkin, randomSkin } from './game/skins.js';
 import { createRenderer } from './render/renderer.js';
+import { renderPortraits } from './render/characters.js';
 import { PLAYER_COLORS } from './render/colors.js';
+import { createSound } from './audio/sound.js';
 import { createKeyboard } from './input/keyboard.js';
 import { createTouch } from './input/touch.js';
 import { createHud } from './ui/hud.js';
@@ -12,19 +15,89 @@ import { createScreens } from './ui/screens.js';
 import { createOnline } from './net/online.js';
 
 const $ = (id) => document.getElementById(id);
-const renderer = createRenderer($('app'));
-const keyboard = createKeyboard();
+const store = {
+  get(k) {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set(k, v) {
+    try {
+      localStorage.setItem(k, v);
+    } catch {}
+  },
+};
+
 const touch = createTouch();
+const renderer = createRenderer($('app'));
+const sound = createSound();
+const keyboard = createKeyboard();
 const hud = createHud();
-const screens = createScreens();
+
+// Portraits des personnages (dans leur couleur « signature »), pour les menus
+const portraits = renderPortraits(SKINS, (id) => PLAYER_COLORS[SKIN_IDS.indexOf(id)]);
+hud.setPortraits(portraits);
+
+let mySkin = isSkin(store.get('kaboom-skin')) ? store.get('kaboom-skin') : 'boulon';
+const screens = createScreens({
+  portraits,
+  onSkin(skin) {
+    sound.play('click');
+    mySkin = skin;
+    store.set('kaboom-skin', skin);
+    screens.setMenuSkin(skin);
+    if (mode === 'online') online.setSkin(skin);
+  },
+});
+screens.setMenuSkin(mySkin);
+
+// Qualité graphique : haute sur ordinateur, basse sur écran tactile (modifiable)
+let highQuality = store.get('kaboom-quality') ? store.get('kaboom-quality') === 'high' : !touch.enabled;
+renderer.setQuality(highQuality);
+
 const specialName = touch.enabled ? 'SPÉCIAL' : 'E';
 
 // mode : 'menu', 'bot' (contre l'IA), 'local' (2 sur le même clavier) ou 'online'
 let mode = 'menu';
-let state = createGame({ playerCount: 2, seed: 1 }); // arène affichée derrière le menu
+let state = createGame({ playerCount: 2, seed: 1, skins: ['boulon', 'mochi'], shuffleSpawns: false }); // arène derrière le menu
 let bot = null;
 let paused = true;
 let endShown = false;
+
+// ---------- Réglages : son et qualité ----------
+
+const SPEAKER_ON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>';
+const SPEAKER_OFF = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 9l5 6M21 9l-5 6"/></svg>';
+
+function refreshSettings() {
+  screens.setSettings({ muted: sound.muted, high: highQuality });
+  $('mute').innerHTML = sound.muted ? SPEAKER_OFF : SPEAKER_ON;
+  $('mute').setAttribute('aria-label', sound.muted ? 'Remettre le son' : 'Couper le son');
+}
+function toggleMute() {
+  sound.toggleMute();
+  refreshSettings();
+}
+$('mute').addEventListener('click', toggleMute);
+$('toggle-sound').addEventListener('click', toggleMute);
+$('toggle-quality').addEventListener('click', () => {
+  highQuality = !highQuality;
+  store.set('kaboom-quality', highQuality ? 'high' : 'low');
+  renderer.setQuality(highQuality);
+  refreshSettings();
+});
+refreshSettings();
+
+// La musique démarre au premier clic ou à la première touche (règle des navigateurs)
+const startAudio = () => sound.startMusic();
+window.addEventListener('pointerdown', startAudio, { once: true });
+window.addEventListener('keydown', startAudio, { once: true });
+// Petit clic sur les boutons de menu
+$('overlay').addEventListener('click', (e) => {
+  if (e.target.closest('button') && !e.target.closest('[data-skin]')) sound.play('click');
+});
 
 // ---------- Hors ligne : contre l'IA ou à deux sur le même clavier ----------
 
@@ -41,12 +114,14 @@ function startOffline(m) {
 }
 
 function newRound() {
-  state = createGame({ playerCount: 2, seed: Math.floor(Math.random() * 1e9) });
+  const other = mode === 'bot' ? randomSkin([mySkin]) : SKIN_IDS[(SKIN_IDS.indexOf(mySkin) + 1) % SKIN_IDS.length];
+  state = createGame({ playerCount: 2, seed: Math.floor(Math.random() * 1e9), skins: [mySkin, other] });
   bot = mode === 'bot' ? createBot(1) : null;
   paused = false;
   endShown = false;
   screens.hide();
   renderer.reset(state);
+  hud.clear();
   hud.update(state);
 }
 
@@ -68,8 +143,9 @@ function showOfflineEnd() {
   let color = '';
   if (state.winner !== null) {
     title = mode === 'bot' ? (state.winner === 0 ? 'Tu as gagné !' : "L'IA a gagné !") : `Joueur ${state.winner + 1} gagne !`;
-    color = PLAYER_COLORS[state.winner];
+    color = PLAYER_COLORS[state.players[state.winner].color];
   }
+  if (state.winner !== null && !(mode === 'bot' && state.winner === 1)) sound.play('win');
   screens.show('end', { title, color });
 }
 
@@ -93,11 +169,13 @@ function backToMenu(message = '') {
   paused = true;
   hud.clear();
   hud.setHelp('');
+  screens.setMenuSkin(mySkin);
   screens.show('menu', { sub: message });
 }
 
 // ---------- En ligne ----------
 
+let lastLobbyPhase = null;
 const online = createOnline({
   onJoined: () => {},
   onLobby: (lobby) => {
@@ -112,6 +190,10 @@ const online = createOnline({
       winsToMatch: lobby.winsToMatch,
     });
     hud.setHelp(touch.enabled ? '' : 'ZQSD ou flèches · Bombe : Espace · Spécial : E');
+    // Jingle quand j'ai gagné la manche
+    const me = lobby.members.find((m) => m.id === you);
+    if ((lobby.phase === 'roundEnd' || lobby.phase === 'podium') && lastLobbyPhase === 'playing' && lobby.lastRoundWinner === me?.id) sound.play('win');
+    lastLobbyPhase = lobby.phase;
     if (lobby.phase === 'lobby') screens.lobby(lobby, you);
     else if (lobby.phase === 'playing') screens.hide();
     else if (lobby.phase === 'roundEnd') screens.roundEnd(lobby, you);
@@ -133,7 +215,7 @@ async function goOnline(action) {
   }
 }
 
-$('create').addEventListener('click', () => goOnline(() => online.create(screens.name)));
+$('create').addEventListener('click', () => goOnline(() => online.create(screens.name, mySkin)));
 $('join-form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (screens.code.length !== 4) {
@@ -141,7 +223,7 @@ $('join-form').addEventListener('submit', (e) => {
     $('code').focus();
     return;
   }
-  goOnline(() => online.join(screens.code, screens.name));
+  goOnline(() => online.join(screens.code, screens.name, mySkin));
 });
 $('cancel-connect').addEventListener('click', () => backToMenu());
 $('leave-lobby').addEventListener('click', () => backToMenu());
@@ -173,6 +255,8 @@ $('resume').addEventListener('click', resume);
 $('quit').addEventListener('click', () => backToMenu());
 
 window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;
+  if (e.code === 'KeyM') toggleMute();
   if (mode !== 'bot' && mode !== 'local') return;
   if (e.code === 'KeyR' && state.phase === 'over') newRound();
   if (e.code === 'Escape') {
@@ -213,6 +297,7 @@ function frame(now) {
         }
         renderer.render(view, now / 1000);
         hud.update(view);
+        sound.events(view.events, (id) => id === online.myPid());
         return;
       }
     }
@@ -220,9 +305,10 @@ function frame(now) {
     renderer.render(state, now / 1000);
     if (mode === 'bot' || mode === 'local') {
       if (!paused) hud.update(state);
+      sound.events(state.events, (id) => mode === 'local' || id === 0);
       if (state.phase === 'over' && !endShown) showOfflineEnd();
     }
-    state.events.length = 0; // événements lus par l'affichage et l'interface
+    state.events.length = 0; // événements lus par l'affichage, l'interface et les sons
   } catch (err) {
     state.events.length = 0;
     showError(err);

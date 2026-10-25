@@ -6,9 +6,10 @@ import {
   BOMB_TIMER, FIRE_DURATION, BASE_RANGE, BASE_BOMBS, BASE_SPEED, END_DELAY,
   ITEM_CHANCE, ITEM_WEIGHTS, MAX_BOMBS, MAX_RANGE, MAX_SPEED, SPEED_STEP, SLOW_SPEED,
   KICK_SPEED, FREEZE_TIME, ICE_BOMBS, SHIELD_INVULN, DASH_TIME, DASH_FACTOR, DASH_COOLDOWN,
-  SKULL_TIME, SKULL_EFFECTS, SUDDEN_DEATH_AT, SUDDEN_DEATH_STEP,
+  SKULL_TIME, SKULL_EFFECTS, SUDDEN_DEATH_AT, SUDDEN_DEATH_STEP, SLOWMO,
 } from './constants.js';
-import { generateArena, idx, inBounds } from './grid.js';
+import { generateArena, idx, inBounds, createRng } from './grid.js';
+import { SKIN_IDS } from './skins.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const NO_INPUT = { dx: 0, dy: 0, bomb: false, special: false };
@@ -28,7 +29,17 @@ const SPIRAL = (() => {
 })();
 
 // colors[i] = couleur du joueur i (index dans PLAYER_COLORS) ; par défaut, son numéro
-export function createGame({ playerCount = 2, seed = Date.now(), colors = null } = {}) {
+// skins[i] = personnage du joueur i ; shuffleSpawns = coins de départ tirés au hasard
+export function createGame({ playerCount = 2, seed = Date.now(), colors = null, skins = null, shuffleSpawns = true } = {}) {
+  // Coins de départ : mélangés à chaque manche (même graine = même tirage)
+  const corners = [0, 1, 2, 3];
+  if (shuffleSpawns) {
+    const rng = createRng(seed ^ 0x5bd1e995);
+    for (let i = corners.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [corners[i], corners[j]] = [corners[j], corners[i]];
+    }
+  }
   return {
     cols: COLS,
     rows: ROWS,
@@ -37,8 +48,9 @@ export function createGame({ playerCount = 2, seed = Date.now(), colors = null }
     players: Array.from({ length: playerCount }, (_, i) => ({
       id: i,
       color: colors ? colors[i] : i,
-      x: SPAWNS[i].x,
-      y: SPAWNS[i].y,
+      skin: skins?.[i] ?? SKIN_IDS[i % SKIN_IDS.length],
+      x: SPAWNS[corners[i]].x,
+      y: SPAWNS[corners[i]].y,
       faceX: 0,
       faceY: 1,
       moving: false,
@@ -72,6 +84,8 @@ export function createGame({ playerCount = 2, seed = Date.now(), colors = null }
 // Fait avancer la partie d'un pas. inputs[i] = { dx, dy, bomb, special } pour le joueur i
 export function update(state, inputs, dt = TICK) {
   if (state.phase === 'over') return;
+  const realDt = dt;
+  if (state.endTimer !== null) dt *= SLOWMO; // ralenti après la dernière élimination
   state.time += dt;
 
   for (const p of state.players) {
@@ -103,13 +117,14 @@ export function update(state, inputs, dt = TICK) {
   resolveExplosions(state);
   checkHits(state);
   suddenDeath(state, dt);
-  checkEnd(state, dt);
+  checkEnd(state, realDt);
 }
 
 // Prédiction côté joueur (parties en ligne) : on déplace son propre personnage tout de
 // suite, sans attendre la réponse du serveur. Seul le déplacement est prédit ; le serveur
 // reste la référence et corrige la position à chaque message.
 export function predictMove(state, p, input, dt = TICK) {
+  if (state.endTimer != null) dt *= SLOWMO;
   p.moving = false;
   if (!p.alive || p.frozen > 0) return;
   let { dx, dy } = input;
@@ -214,6 +229,7 @@ function placeBomb(state, p) {
     id: state.nextId++, x, y, owner: p.id, timer: BOMB_TIMER, range: p.range,
     pass, ice, slide: null,
   });
+  state.events.push({ type: 'bomb', id: p.id, x, y });
 }
 
 // Action spéciale : faire exploser ses bombes tout de suite (détonateur), ou sprinter.
