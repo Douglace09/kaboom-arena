@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Kaboom Arena</title>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud">
+      <div id="players"></div>
+      <div id="timer">2:00</div>
+      <div id="help"></div>
+    </div>
+
+    <div id="toast" hidden></div>
+
+    <div id="overlay">
+      <div class="card">
+        <h1 id="result">Kaboom Arena</h1>
+        <p id="subtitle"></p>
+
+        <!-- Accueil -->
+        <div id="menu" class="screen">
+          <label class="field">
+            <span>Ton pseudo</span>
+            <input id="name" maxlength="14" autocomplete="nickname" placeholder="Ton pseudo" />
+          </label>
+
+          <h2>En ligne avec tes amis</h2>
+          <button id="create" class="primary">Créer un salon</button>
+          <form id="join-form" class="join-row">
+            <input id="code" maxlength="4" autocomplete="off" placeholder="CODE" aria-label="Code du salon" />
+            <button id="join" type="submit">Rejoindre</button>
+          </form>
+
+          <h2>Sur cet appareil</h2>
+          <div class="row">
+            <button id="mode-bot">Contre l'IA</button>
+            <button id="mode-local">2 joueurs (même clavier)</button>
+          </div>
+
+          <h2>Bonus cachés dans les blocs</h2>
+          <div id="legend"></div>
+        </div>
+
+        <!-- Connexion au serveur -->
+        <div id="connecting" class="screen" hidden>
+          <div class="spinner" aria-hidden="true"></div>
+          <p class="hint">Si personne n'a joué depuis un moment, le serveur se réveille : ça peut prendre jusqu'à 1 minute.</p>
+          <button id="cancel-connect">Annuler</button>
+        </div>
+
+        <!-- Salon -->
+        <div id="lobby" class="screen" hidden>
+          <div class="code-box">
+            <span class="label">Code du salon</span>
+            <strong id="lobby-code">----</strong>
+            <button id="copy-link">Copier le lien d'invitation</button>
+          </div>
+          <ul id="lobby-players" class="player-list"></ul>
+          <div id="host-controls" class="buttons">
+            <div class="row">
+              <button id="add-bot">Ajouter une IA</button>
+              <button id="remove-bot">Retirer une IA</button>
+            </div>
+            <button id="start" class="primary">Lancer la partie</button>
+          </div>
+          <p id="lobby-wait" class="hint" hidden>En attente de l'hôte pour lancer la partie…</p>
+          <button id="leave-lobby">Quitter le salon</button>
+        </div>
+
+        <!-- Fin de manche en ligne -->
+        <div id="round-end" class="screen" hidden>
+          <ul id="round-scores" class="player-list"></ul>
+          <p class="hint">Manche suivante dans quelques secondes…</p>
+        </div>
+
+        <!-- Podium en ligne -->
+        <div id="podium" class="screen" hidden>
+          <ol id="podium-list" class="podium"></ol>
+          <button id="rematch" class="primary">Revanche</button>
+          <p id="rematch-wait" class="hint" hidden>En attente de l'hôte pour la revanche…</p>
+          <button id="leave-podium">Quitter le salon</button>
+        </div>
+
+        <!-- Pause (hors ligne) -->
+        <div id="pause" class="screen" hidden>
+          <button id="resume" class="primary">Reprendre (Échap)</button>
+          <button id="quit">Quitter la partie</button>
+        </div>
+
+        <!-- Fin de manche (hors ligne) -->
+        <div id="end" class="screen" hidden>
+          <button id="replay" class="primary">Rejouer (R)</button>
+          <button id="change-mode">Retour au menu</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
