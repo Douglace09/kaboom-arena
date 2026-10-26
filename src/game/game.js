@@ -2,55 +2,86 @@
 // Aucun code d'affichage ici : l'état est un simple objet. Le même fichier tourne
 // dans le navigateur (modes hors ligne) et sur le serveur (parties en ligne).
 import {
-  COLS, ROWS, TICK, CELL, SPAWNS,
+  TICK, CELL,
   BOMB_TIMER, FIRE_DURATION, BASE_RANGE, BASE_BOMBS, BASE_SPEED, END_DELAY,
   ITEM_CHANCE, ITEM_WEIGHTS, MAX_BOMBS, MAX_RANGE, MAX_SPEED, SPEED_STEP, SLOW_SPEED,
   KICK_SPEED, FREEZE_TIME, ICE_BOMBS, SHIELD_INVULN, DASH_TIME, DASH_FACTOR, DASH_COOLDOWN,
   SKULL_TIME, SKULL_EFFECTS, SUDDEN_DEATH_AT, SUDDEN_DEATH_STEP, SLOWMO,
+  BELT_SPEED, ICE_ACCEL, ICE_FRICTION, ICE_BRAKE, ICE_START,
+  LAVA_FIRST, LAVA_EVERY, LAVA_WARN, LAVA_BURN, LAVA_COUNT,
+  SAND_SLOW, WATER_SLOW, WAVE_FIRST, WAVE_EVERY, WAVE_WARN, WAVE_FLOOD, DOOR_PERIOD, HOLE_PULL, HOLE_SPEED,
 } from './constants.js';
-import { generateArena, idx, inBounds, createRng } from './grid.js';
+import { getMap, SPAWNS, SIZES, sizeFor } from './maps.js';
+import { generateArena, idx, inBounds, createRng, setDims, dims } from './grid.js';
 import { SKIN_IDS } from './skins.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const NO_INPUT = { dx: 0, dy: 0, bomb: false, special: false };
 
 // Ordre de fermeture de l'arène pendant la mort subite : en spirale depuis les bords
-const SPIRAL = (() => {
+const spirals = {};
+function spiral(cols, rows) {
+  const key = cols + 'x' + rows;
+  if (spirals[key]) return spirals[key];
   const out = [];
-  let x0 = 1, y0 = 1, x1 = COLS - 2, y1 = ROWS - 2;
+  const at = (x, y) => y * cols + x;
+  let x0 = 1, y0 = 1, x1 = cols - 2, y1 = rows - 2;
   while (x0 <= x1 && y0 <= y1) {
-    for (let x = x0; x <= x1; x++) out.push(idx(x, y0));
-    for (let y = y0 + 1; y <= y1; y++) out.push(idx(x1, y));
-    if (y1 > y0) for (let x = x1 - 1; x >= x0; x--) out.push(idx(x, y1));
-    if (x1 > x0) for (let y = y1 - 1; y > y0; y--) out.push(idx(x0, y));
+    for (let x = x0; x <= x1; x++) out.push(at(x, y0));
+    for (let y = y0 + 1; y <= y1; y++) out.push(at(x1, y));
+    if (y1 > y0) for (let x = x1 - 1; x >= x0; x--) out.push(at(x, y1));
+    if (x1 > x0) for (let y = y1 - 1; y > y0; y--) out.push(at(x0, y));
     x0++; y0++; x1--; y1--;
   }
-  return out;
-})();
+  return (spirals[key] = out);
+}
+
+const mapOf = (state) => getMap(state.map, state.size);
+// Règle la taille d'arène utilisée par idx() / inBounds() pour cette partie
+export const useArena = (state) => setDims(state.cols, state.rows);
 
 // colors[i] = couleur du joueur i (index dans PLAYER_COLORS) ; par défaut, son numéro
-// skins[i] = personnage du joueur i ; shuffleSpawns = coins de départ tirés au hasard
-export function createGame({ playerCount = 2, seed = Date.now(), colors = null, skins = null, shuffleSpawns = true } = {}) {
-  // Coins de départ : mélangés à chaque manche (même graine = même tirage)
-  const corners = [0, 1, 2, 3];
-  if (shuffleSpawns) {
-    const rng = createRng(seed ^ 0x5bd1e995);
-    for (let i = corners.length - 1; i > 0; i--) {
+// skins[i] = personnage du joueur i ; shuffleSpawns = départs tirés au hasard ; map = carte
+// size = 'small' (15 × 13) ou 'large' (21 × 17) ; par défaut selon le nombre de joueurs
+export function createGame({ playerCount = 2, seed = Date.now(), colors = null, skins = null, shuffleSpawns = true, map = 'classique', size = null } = {}) {
+  size = size || sizeFor(playerCount);
+  const { cols, rows } = SIZES[size];
+  setDims(cols, rows);
+  const def = getMap(map, size);
+  // Départs : d'abord les coins, puis le milieu des bords ; tirés au hasard à chaque manche
+  const rng = createRng(seed ^ 0x5bd1e995);
+  const shuffle = (list) => {
+    for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
-      [corners[i], corners[j]] = [corners[j], corners[i]];
+      [list[i], list[j]] = [list[j], list[i]];
     }
+    return list;
+  };
+  const all = SPAWNS[size].map((s, i) => i);
+  let slots = all.slice(0, playerCount);
+  if (shuffleSpawns) {
+    const corners = shuffle(all.slice(0, 4));
+    const mids = shuffle(all.slice(4));
+    slots = shuffle([...corners, ...mids].slice(0, playerCount));
   }
   return {
-    cols: COLS,
-    rows: ROWS,
-    cells: generateArena(seed),
+    cols,
+    rows,
+    size,
+    map: def.id,
+    cells: generateArena(seed, def.id, size),
+    doors: def.doors.map((d) => ({ i: d.i, group: d.group, closed: d.group === 'A' })), // usine
+    doorGroup: 'A', // groupe de portes fermé en ce moment
+    doorTimer: DOOR_PERIOD,
+    waves: [], // plage : rangées inondées { row, timer, flooding }
+    waveTimer: WAVE_FIRST,
     rng: (seed ^ 0x9e3779b9) >>> 0, // hasard des bonus (même graine = même partie)
     players: Array.from({ length: playerCount }, (_, i) => ({
       id: i,
       color: colors ? colors[i] : i,
       skin: skins?.[i] ?? SKIN_IDS[i % SKIN_IDS.length],
-      x: SPAWNS[corners[i]].x,
-      y: SPAWNS[corners[i]].y,
+      x: SPAWNS[size][slots[i]].x,
+      y: SPAWNS[size][slots[i]].y,
       faceX: 0,
       faceY: 1,
       moving: false,
@@ -67,6 +98,10 @@ export function createGame({ playerCount = 2, seed = Date.now(), colors = null, 
       invuln: 0, // invincibilité restante
       dashTimer: 0,
       dashCooldown: 0,
+      v: 0, // banquise : vitesse de glisse et sa direction
+      vx: 0,
+      vy: 0,
+      portalLock: -1, // case du portail d'arrivée (évite de repartir aussitôt)
     })),
     bombs: [],
     fires: [],
@@ -74,6 +109,8 @@ export function createGame({ playerCount = 2, seed = Date.now(), colors = null, 
     events: [], // ce qui s'est passé (explosions, bonus…), lu puis vidé par l'affichage
     nextId: 1,
     time: 0,
+    lava: [], // volcan : cases de lave { x, y, timer, burning }
+    lavaTimer: LAVA_FIRST,
     sudden: null, // mort subite : { index, timer } une fois commencée
     phase: 'playing', // 'playing' puis 'over'
     endTimer: null,
@@ -84,6 +121,7 @@ export function createGame({ playerCount = 2, seed = Date.now(), colors = null, 
 // Fait avancer la partie d'un pas. inputs[i] = { dx, dy, bomb, special } pour le joueur i
 export function update(state, inputs, dt = TICK) {
   if (state.phase === 'over') return;
+  useArena(state);
   const realDt = dt;
   if (state.endTimer !== null) dt *= SLOWMO; // ralenti après la dernière élimination
   state.time += dt;
@@ -100,19 +138,32 @@ export function update(state, inputs, dt = TICK) {
     if (p.skull?.type === 'nobomb') bomb = false;
 
     if (special) useSpecial(state, p);
-    if (p.dashTimer > 0 && !dx && !dy) { dx = p.faceX; dy = p.faceY; }
-    movePlayer(state, p, dx, dy, dt);
+    movePlayer(state, p, dx, dy, dt, false);
     if (bomb) placeBomb(state, p);
+  }
+
+  updateDoors(state, dt);
+
+  // Mécaniques de la carte : tapis roulants et portails (même pour un joueur gelé)
+  for (const p of state.players) {
+    if (!p.alive) continue;
+    applyBelt(state, p, dt);
+    applyPortal(state, p);
     pickItem(state, p);
   }
 
   for (const b of state.bombs) {
     // On peut sortir de sa bombe, mais dès qu'on a quitté sa case elle bloque
     b.pass = b.pass.filter((id) => inCell(state.players[id], b.x, b.y));
+    if (!b.slide) startBeltSlide(state, b);
+    if (!b.slide) startHolePull(state, b);
     if (b.slide) slideBomb(state, b, dt);
     b.timer -= dt;
   }
+  state.bombs = state.bombs.filter((b) => !b.gone); // avalées par un trou noir ou noyées
 
+  updateWaves(state, dt);
+  updateLava(state, dt);
   updateFires(state, dt);
   resolveExplosions(state);
   checkHits(state);
@@ -124,22 +175,22 @@ export function update(state, inputs, dt = TICK) {
 // suite, sans attendre la réponse du serveur. Seul le déplacement est prédit ; le serveur
 // reste la référence et corrige la position à chaque message.
 export function predictMove(state, p, input, dt = TICK) {
+  useArena(state);
   if (state.endTimer != null) dt *= SLOWMO;
   p.moving = false;
-  if (!p.alive || p.frozen > 0) return;
-  let { dx, dy } = input;
-  if (p.skull?.type === 'inverse') { dx = -dx; dy = -dy; }
-  if (p.dashTimer > 0 && !dx && !dy) { dx = p.faceX; dy = p.faceY; }
-  if (!dx && !dy) return;
-  p.faceX = dx;
-  p.faceY = dy;
-  const dist = speedOf(p) * dt;
-  if (dx) moveAxis(state, p, 'x', 'y', dx, dist);
-  else moveAxis(state, p, 'y', 'x', dy, dist);
+  if (!p.alive) return;
+  if (!(p.frozen > 0)) {
+    let { dx, dy } = input;
+    if (p.skull?.type === 'inverse') { dx = -dx; dy = -dy; }
+    movePlayer(state, p, dx, dy, dt, true);
+  }
+  applyBelt(state, p, dt);
+  applyPortal(state, p);
 }
 
 // Élimine un joueur (par exemple quand il quitte la partie en ligne)
 export function eliminate(state, id) {
+  useArena(state);
   const p = state.players[id];
   if (p && p.alive) kill(state, p);
 }
@@ -157,19 +208,90 @@ function tickTimers(p, dt) {
 
 // ---------- Déplacement ----------
 
-function speedOf(p) {
-  const base = p.skull?.type === 'slow' ? SLOW_SPEED : p.speed;
+function speedOf(state, p) {
+  let base = p.skull?.type === 'slow' ? SLOW_SPEED : p.speed;
+  const cx = Math.round(p.x);
+  const cy = Math.round(p.y);
+  if (mapOf(state).sand.has(idx(cx, cy))) base *= SAND_SLOW; // désert : sables mouvants
+  if (state.waves?.some((w) => w.flooding && w.row === cy)) base *= WATER_SLOW; // plage : rangée inondée
   return p.dashTimer > 0 ? base * DASH_FACTOR : base;
 }
 
-function movePlayer(state, p, dx, dy, dt) {
+// predict = prédiction côté joueur : on ne pousse pas les bombes (le serveur s'en charge)
+function movePlayer(state, p, dx, dy, dt, predict) {
+  if (p.dashTimer > 0 && !dx && !dy) { dx = p.faceX; dy = p.faceY; }
+  if (state.map === 'banquise') return moveOnIce(state, p, dx, dy, dt, predict);
   if (!dx && !dy) return;
   p.faceX = dx;
   p.faceY = dy;
-  tryKick(state, p, dx, dy);
-  const dist = speedOf(p) * dt;
+  if (!predict) tryKick(state, p, dx, dy);
+  step(state, p, dx, dy, speedOf(state, p) * dt);
+}
+
+function step(state, p, dx, dy, dist) {
   if (dx) moveAxis(state, p, 'x', 'y', dx, dist);
   else moveAxis(state, p, 'y', 'x', dy, dist);
+}
+
+// Banquise : on prend de l'élan, on glisse quand on lâche, on freine en appuyant dans l'autre sens
+function moveOnIce(state, p, dx, dy, dt, predict) {
+  const max = speedOf(state, p);
+  if (dx || dy) {
+    p.faceX = dx;
+    p.faceY = dy;
+    if (!predict) tryKick(state, p, dx, dy);
+    if (p.v > 0 && dx === p.vx && dy === p.vy) {
+      p.v = Math.min(max, p.v + ICE_ACCEL * dt);
+    } else if (p.v > 0 && dx === -p.vx && dy === -p.vy) {
+      p.v = Math.max(0, p.v - ICE_BRAKE * dt);
+    } else {
+      // Nouveau départ ou virage : seulement si le passage est libre, sinon on continue de glisser
+      const cx = Math.round(p.x);
+      const cy = Math.round(p.y);
+      if (!isBlocked(state, p, cx + dx, cy + dy) || p.v === 0) {
+        p.v = p.v > 0 ? Math.max(ICE_START, p.v * 0.7) : ICE_START;
+        p.vx = dx;
+        p.vy = dy;
+      }
+    }
+  } else {
+    p.v = Math.max(0, p.v - ICE_FRICTION * dt);
+  }
+  if (p.dashTimer > 0) p.v = max;
+  if (p.v <= 0 || (!p.vx && !p.vy)) return;
+  const bx = p.x;
+  const by = p.y;
+  step(state, p, p.vx, p.vy, p.v * dt);
+  if (p.x === bx && p.y === by) p.v = 0; // contre un obstacle : on s'arrête
+  p.moving = p.v > 0.3;
+}
+
+// Néon City : un tapis roulant emporte le joueur
+function applyBelt(state, p, dt) {
+  const map = mapOf(state);
+  if (!map.belts.size) return;
+  const belt = map.belts.get(idx(Math.round(p.x), Math.round(p.y)));
+  if (!belt) return;
+  const moving = p.moving;
+  step(state, p, belt.dx, belt.dy, BELT_SPEED * dt);
+  p.moving = moving;
+}
+
+// Jungle : en arrivant au centre d'un portail, on ressort par le portail relié
+function applyPortal(state, p) {
+  const map = mapOf(state);
+  if (!map.portals.size) return;
+  const cx = Math.round(p.x);
+  const cy = Math.round(p.y);
+  const here = idx(cx, cy);
+  if (p.portalLock !== -1 && here !== p.portalLock) p.portalLock = -1;
+  const dest = map.portals.get(here);
+  if (dest === undefined || p.portalLock !== -1) return;
+  if (Math.abs(p.x - cx) > 0.25 || Math.abs(p.y - cy) > 0.25) return;
+  p.x = dest % dims.cols;
+  p.y = Math.floor(dest / dims.cols);
+  p.portalLock = dest;
+  state.events.push({ type: 'portal', id: p.id, from: here, to: dest });
 }
 
 // Déplacement sur un axe, avec « glissement » automatique dans les virages
@@ -204,10 +326,16 @@ function moveAxis(state, p, main, side, dir, dist) {
 
 function isBlocked(state, p, x, y) {
   if (!inBounds(x, y)) return true;
-  if (state.cells[idx(x, y)] !== CELL.EMPTY) return true;
+  const i = idx(x, y);
+  if (state.cells[i] !== CELL.EMPTY) return true;
+  if (mapOf(state).holes.has(i)) return true; // on ne marche pas dans un trou noir
+  if (doorClosed(state, i)) return true;
   const b = bombAt(state, x, y);
   return !!b && !b.pass.includes(p.id);
 }
+
+// Usine : cette case est-elle une porte fermée ?
+const doorClosed = (state, i) => !!state.doors?.some((d) => d.i === i && d.closed);
 
 // Le joueur est-il sur cette case (au sens de la case la plus proche) ?
 const inCell = (p, x, y) => p.alive && Math.round(p.x) === x && Math.round(p.y) === y;
@@ -255,6 +383,7 @@ function useSpecial(state, p) {
 
 function canSlideInto(state, b, x, y) {
   if (!inBounds(x, y) || state.cells[idx(x, y)] !== CELL.EMPTY) return false;
+  if (doorClosed(state, idx(x, y))) return false;
   if (state.bombs.some((o) => o !== b && o.x === x && o.y === y)) return false;
   return !state.players.some((p) => touches(p, x, y));
 }
@@ -272,22 +401,73 @@ function tryKick(state, p, dx, dy) {
   state.events.push({ type: 'kick', x: b.x, y: b.y });
 }
 
+// Néon City : une bombe posée sur un tapis roulant avance avec lui
+function startBeltSlide(state, b) {
+  const map = mapOf(state);
+  if (!map.belts.size) return;
+  const belt = map.belts.get(idx(b.x, b.y));
+  if (belt && canSlideInto(state, b, b.x + belt.dx, b.y + belt.dy)) {
+    b.slide = { dx: belt.dx, dy: belt.dy, progress: 0, speed: BELT_SPEED };
+  }
+}
+
+// Espace : un trou noir à 1 ou 2 cases en ligne droite attire la bombe
+function startHolePull(state, b) {
+  const map = mapOf(state);
+  if (!map.holes.size) return;
+  for (const [dx, dy] of DIRS) {
+    for (let r = 1; r <= HOLE_PULL; r++) {
+      const x = b.x + dx * r;
+      const y = b.y + dy * r;
+      if (!inBounds(x, y)) break;
+      const i = idx(x, y);
+      if (map.holes.has(i)) {
+        if (canSlideInto(state, b, b.x + dx, b.y + dy) || r === 1) {
+          b.slide = { dx, dy, progress: 0, speed: HOLE_SPEED, pull: true };
+          return;
+        }
+        break;
+      }
+      if (state.cells[i] !== CELL.EMPTY || doorClosed(state, i) || bombAt(state, x, y)) break;
+    }
+  }
+}
+
 function slideBomb(state, b, dt) {
   const s = b.slide;
-  s.progress += KICK_SPEED * dt;
+  s.progress += (s.speed ?? KICK_SPEED) * dt;
   while (b.slide && s.progress >= 1) {
     const nx = b.x + s.dx;
     const ny = b.y + s.dy;
     // quelque chose est apparu sur la route entre-temps : la bombe s'arrête
-    if (state.cells[idx(nx, ny)] !== CELL.EMPTY || state.bombs.some((o) => o !== b && o.x === nx && o.y === ny)) {
+    if (state.cells[idx(nx, ny)] !== CELL.EMPTY || doorClosed(state, idx(nx, ny)) || state.bombs.some((o) => o !== b && o.x === nx && o.y === ny)) {
       b.slide = null;
       break;
     }
     b.x = nx;
     b.y = ny;
     s.progress -= 1;
+    // Espace : la bombe tombe dans le trou noir et disparaît sans exploser
+    if (mapOf(state).holes.has(idx(b.x, b.y))) {
+      b.gone = true;
+      b.slide = null;
+      state.events.push({ type: 'swallow', x: b.x, y: b.y });
+      break;
+    }
+    // Jungle : une bombe poussée dans un portail ressort de l'autre côté
+    const dest = mapOf(state).portals.get(idx(b.x, b.y));
+    if (dest !== undefined) {
+      const tx = dest % dims.cols;
+      const ty = Math.floor(dest / dims.cols);
+      if (!state.bombs.some((o) => o !== b && o.x === tx && o.y === ty)) {
+        b.x = tx;
+        b.y = ty;
+      }
+    }
     b.pass = state.players.filter((o) => inCell(o, b.x, b.y)).map((o) => o.id);
-    if (!canSlideInto(state, b, b.x + s.dx, b.y + s.dy)) b.slide = null;
+    if (s.speed && !s.pull) b.slide = null; // tapis : on avance case par case
+    else if (s.pull && mapOf(state).holes.has(idx(b.x + s.dx, b.y + s.dy))) continue; // le trou est juste devant
+    else if (!canSlideInto(state, b, b.x + s.dx, b.y + s.dy)) b.slide = null;
   }
 }
 
@@ -318,7 +498,7 @@ function explode(state, b) {
       if (!inBounds(x, y)) break;
       const i = idx(x, y);
       const c = state.cells[i];
-      if (c === CELL.WALL || c === CELL.BURNING) break;
+      if (c === CELL.WALL || c === CELL.BURNING || doorClosed(state, i)) break;
       if (c === CELL.BLOCK) {
         state.cells[i] = CELL.BURNING; // le bloc brûle puis disparaît
         addFire(state, x, y, b.ice);
@@ -336,14 +516,116 @@ function explode(state, b) {
   state.events.push({ type: 'explosion', x: b.x, y: b.y, ice: b.ice });
 }
 
-function addFire(state, x, y, ice) {
+function addFire(state, x, y, ice, duration = FIRE_DURATION) {
   const f = state.fires.find((f) => f.x === x && f.y === y);
   if (f) {
-    f.timer = FIRE_DURATION;
+    f.timer = Math.max(f.timer, duration);
     f.ice = f.ice && ice; // une flamme normale l'emporte sur la glace
   } else {
-    state.fires.push({ x, y, timer: FIRE_DURATION, ice });
+    state.fires.push({ x, y, timer: duration, ice });
   }
+}
+
+// Volcan : des cases rougeoient, puis la lave jaillit (elle brûle comme une explosion)
+function updateLava(state, dt) {
+  if (state.map !== 'volcan') return;
+  for (const l of state.lava) {
+    l.timer -= dt;
+    if (!l.burning && l.timer <= 0) {
+      l.burning = true;
+      l.timer = LAVA_BURN;
+      addFire(state, l.x, l.y, false, LAVA_BURN);
+      const item = state.items.findIndex((it) => it.x === l.x && it.y === l.y);
+      if (item >= 0) state.items.splice(item, 1);
+      state.events.push({ type: 'lava', x: l.x, y: l.y });
+    }
+  }
+  state.lava = state.lava.filter((l) => !l.burning || l.timer > 0);
+
+  state.lavaTimer -= dt;
+  if (state.lavaTimer > 0) return;
+  state.lavaTimer = LAVA_EVERY;
+  const taken = new Set(state.lava.map((l) => idx(l.x, l.y)));
+  const free = [];
+  state.cells.forEach((c, i) => {
+    if (c !== CELL.EMPTY || taken.has(i)) return;
+    const x = i % dims.cols;
+    const y = Math.floor(i / dims.cols);
+    if (state.bombs.some((b) => b.x === x && b.y === y)) return;
+    free.push(i);
+  });
+  const scale = state.size === 'large' ? 1.8 : 1;
+  const count = Math.min(free.length, Math.round((LAVA_COUNT + Math.floor(state.time / 40)) * scale));
+  for (let k = 0; k < count; k++) {
+    const j = Math.floor(rand(state) * free.length);
+    const i = free.splice(j, 1)[0];
+    state.lava.push({ x: i % dims.cols, y: Math.floor(i / dims.cols), timer: LAVA_WARN, burning: false });
+  }
+  if (count) state.events.push({ type: 'lavaWarn' });
+}
+
+// Usine : les portes A et B se ferment à tour de rôle (une porte occupée attend d'être libre)
+function updateDoors(state, dt) {
+  if (!state.doors?.length) return;
+  state.doorTimer -= dt;
+  if (state.doorTimer <= 0) {
+    state.doorTimer += DOOR_PERIOD;
+    state.doorGroup = state.doorGroup === 'A' ? 'B' : 'A';
+    state.events.push({ type: 'door' });
+  }
+  for (const d of state.doors) {
+    const want = d.group === state.doorGroup;
+    if (!want) {
+      d.closed = false;
+    } else if (!d.closed) {
+      const x = d.i % dims.cols;
+      const y = Math.floor(d.i / dims.cols);
+      const busy = state.players.some((p) => touches(p, x, y)) || bombAt(state, x, y) || state.cells[d.i] !== CELL.EMPTY;
+      if (!busy) d.closed = true;
+    }
+  }
+}
+
+// Plage : une vague prévient (la rangée scintille), puis inonde la rangée :
+// on y avance moins vite et les bombes qui s'y trouvent sont noyées
+function updateWaves(state, dt) {
+  if (state.map !== 'plage') return;
+  for (const w of state.waves) {
+    w.timer -= dt;
+    if (!w.flooding && w.timer <= 0) {
+      w.flooding = true;
+      w.timer = WAVE_FLOOD;
+      state.events.push({ type: 'wave', row: w.row });
+    }
+    if (w.flooding) {
+      for (const b of state.bombs) {
+        if (b.y === w.row && !b.gone) {
+          b.gone = true;
+          state.events.push({ type: 'splash', x: b.x, y: b.y });
+        }
+      }
+    }
+  }
+  state.bombs = state.bombs.filter((b) => !b.gone);
+  state.waves = state.waves.filter((w) => !w.flooding || w.timer > 0);
+
+  state.waveTimer -= dt;
+  if (state.waveTimer > 0) return;
+  state.waveTimer = WAVE_EVERY;
+  const taken = new Set(state.waves.map((w) => w.row));
+  const rows = [];
+  for (let y = 1; y < dims.rows - 1; y++) {
+    if (taken.has(y)) continue;
+    let free = 0;
+    for (let x = 1; x < dims.cols - 1; x++) if (state.cells[idx(x, y)] !== CELL.WALL) free++;
+    if (free >= 5) rows.push(y);
+  }
+  const count = Math.min(rows.length, state.size === 'large' ? 2 : 1);
+  for (let k = 0; k < count; k++) {
+    const row = rows.splice(Math.floor(rand(state) * rows.length), 1)[0];
+    state.waves.push({ row, timer: WAVE_WARN, flooding: false });
+  }
+  if (count) state.events.push({ type: 'waveWarn' });
 }
 
 function updateFires(state, dt) {
@@ -444,16 +726,18 @@ function suddenDeath(state, dt) {
   }
   const s = state.sudden;
   s.timer -= dt;
-  while (s.timer <= 0 && s.index < SPIRAL.length) {
-    const c = SPIRAL[s.index++];
+  const order = spiral(dims.cols, dims.rows);
+  while (s.timer <= 0 && s.index < order.length) {
+    const c = order[s.index++];
     if (state.cells[c] === CELL.WALL) continue;
-    s.timer += SUDDEN_DEATH_STEP;
-    const x = c % COLS;
-    const y = Math.floor(c / COLS);
+    s.timer += state.size === 'large' ? SUDDEN_DEATH_STEP * 0.6 : SUDDEN_DEATH_STEP;
+    const x = c % dims.cols;
+    const y = Math.floor(c / dims.cols);
     state.cells[c] = CELL.WALL;
     state.bombs = state.bombs.filter((b) => b.x !== x || b.y !== y);
     state.items = state.items.filter((it) => it.x !== x || it.y !== y);
     state.fires = state.fires.filter((f) => f.x !== x || f.y !== y);
+    state.lava = state.lava.filter((l) => l.x !== x || l.y !== y);
     for (const p of state.players) if (inCell(p, x, y)) kill(state, p); // le bouclier ne protège pas
     state.events.push({ type: 'wall', x, y });
   }

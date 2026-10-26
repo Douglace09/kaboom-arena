@@ -11,97 +11,15 @@ import { PLAYER_COLORS, ITEM_COLORS } from './colors.js';
 import { iconCanvas } from './icons.js';
 import { createCharacter, createBomb, setFuse } from './characters.js';
 import { createEffects } from './effects.js';
+import { themeOf, floorTextures, crateTextures, groundTexture, chevronTexture, createBelt, createPortal, createLavaWarning, createSand, createDoor, createHole, createWave } from './themes.js';
+import { getMap } from '../game/maps.js';
+import { BELT_SPEED } from '../game/constants.js';
 
-const THEME = {
-  background: 0x090b16,
-  tileA: '#171c33',
-  tileB: '#1b213c',
-  line: 'rgba(90, 210, 255, 0.22)',
-  border: 0x283055,
-  pillar: 0x37406e,
-  neon: 0x35e0ff,
-  cap: 0x5b47d6,
-};
+const PORTAL_COLORS = [0x40ffb0, 0xffb040, 0xff4fa3];
 
 const colorOf = (p) => PLAYER_COLORS[p.color ?? p.id];
 const SKULL_HALO = new THREE.Color(0xb36bff).multiplyScalar(1.8);
-
-// ---------- Textures dessinées au pinceau ----------
-
-function floorTexture(cols, rows) {
-  const s = 64;
-  const cv = document.createElement('canvas');
-  cv.width = cols * s;
-  cv.height = rows * s;
-  const g = cv.getContext('2d');
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      g.fillStyle = (x + y) % 2 ? THEME.tileA : THEME.tileB;
-      g.fillRect(x * s, y * s, s, s);
-    }
-  }
-  g.strokeStyle = THEME.line;
-  g.lineWidth = 2;
-  for (let x = 0; x <= cols; x++) {
-    g.beginPath();
-    g.moveTo(x * s, 0);
-    g.lineTo(x * s, rows * s);
-    g.stroke();
-  }
-  for (let y = 0; y <= rows; y++) {
-    g.beginPath();
-    g.moveTo(0, y * s);
-    g.lineTo(cols * s, y * s);
-    g.stroke();
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
-
-function crateTexture() {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 128;
-  const g = cv.getContext('2d');
-  g.fillStyle = '#d98b42';
-  g.fillRect(0, 0, 128, 128);
-  g.fillStyle = 'rgba(120, 60, 20, 0.35)';
-  for (let y = 0; y < 128; y += 32) g.fillRect(0, y, 128, 3); // planches
-  g.strokeStyle = '#8c4f22';
-  g.lineWidth = 14;
-  g.strokeRect(7, 7, 114, 114); // cadre
-  g.lineWidth = 12;
-  g.beginPath();
-  g.moveTo(14, 114);
-  g.lineTo(114, 14); // traverse
-  g.stroke();
-  g.fillStyle = '#5a3216';
-  for (const [x, y] of [[12, 12], [116, 12], [12, 116], [116, 116]]) {
-    g.beginPath();
-    g.arc(x, y, 4, 0, Math.PI * 2);
-    g.fill(); // clous
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-function gridTexture() {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 128;
-  const g = cv.getContext('2d');
-  g.fillStyle = '#0b0e1c';
-  g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = 'rgba(80, 120, 255, 0.16)';
-  g.lineWidth = 2;
-  g.strokeRect(0, 0, 128, 128);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(30, 30);
-  return tex;
-}
+const FOLLOW_COLS = 11.5; // colonnes visibles quand la caméra suit le joueur (téléphone, grande arène)
 
 export function createRenderer(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -113,15 +31,16 @@ export function createRenderer(container) {
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(THEME.background);
-  scene.fog = new THREE.Fog(THEME.background, 22, 46);
+  scene.background = new THREE.Color(0x090b16);
+  scene.fog = new THREE.Fog(0x090b16, 22, 46);
 
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
   const cameraBase = new THREE.Vector3();
   const lookBase = new THREE.Vector3();
 
   // Lumières : ciel froid, soleil chaud avec ombres, contre-jour violet
-  scene.add(new THREE.HemisphereLight(0xb8c8ff, 0x2a1d40, 1.25));
+  const hemi = new THREE.HemisphereLight(0xb8c8ff, 0x2a1d40, 1.25);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1dd, 2.3);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -135,14 +54,14 @@ export function createRenderer(container) {
   // Halo lumineux (qualité haute)
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.5, 1.1);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.42, 0.45, 1.15);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
   const effects = createEffects(scene);
 
   // Sol extérieur infini (décor)
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ map: gridTexture(), roughness: 0.9 }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ roughness: 0.9 }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.06;
   ground.receiveShadow = true;
@@ -160,9 +79,9 @@ export function createRenderer(container) {
   const mat = {
     wall: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.42, metalness: 0.35 }),
     sudden: new THREE.MeshStandardMaterial({ color: 0x6e2f58, roughness: 0.45, metalness: 0.3, emissive: 0xff3d8b, emissiveIntensity: 0.25 }),
-    cap: new THREE.MeshStandardMaterial({ color: THEME.cap, emissive: THEME.cap, emissiveIntensity: 1.25 }),
-    neon: new THREE.MeshBasicMaterial({ color: new THREE.Color(THEME.neon).multiplyScalar(2.2), toneMapped: false }),
-    crate: new THREE.MeshStandardMaterial({ map: crateTexture(), roughness: 0.75 }),
+    cap: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.25 }),
+    neon: new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
+    crate: new THREE.MeshStandardMaterial({ roughness: 0.75 }),
     burning: new THREE.MeshStandardMaterial({ color: 0xff7a2a, emissive: 0xff4a00, emissiveIntensity: 2.2 }),
     fire: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff5a14).multiplyScalar(1.15), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
     fireCore: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffb347).multiplyScalar(1.3), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
@@ -198,6 +117,16 @@ export function createRenderer(container) {
   const bombs = new Map(); // id de bombe -> objet
   const fires = new Map(); // "x,y" -> mesh
   const items = new Map(); // "x,y,type" -> groupe
+  const lavaMarks = new Map(); // "x,y" -> mesh (volcan)
+  let portals = []; // portails animés (jungle)
+  let doorMeshes = []; // portes (usine)
+  let holeMeshes = []; // trous noirs (espace)
+  let sandMeshes = []; // sables mouvants (désert)
+  const waveMeshes = new Map(); // rangées inondées (plage)
+  let followId = null; // téléphone + grande arène : la caméra suit ce joueur
+  let viewers = []; // ville de nuit : joueurs dont on voit les alentours
+  let theme = themeOf('classique');
+  const crateCache = {};
   let shake = 0;
   let lastT = 0;
   let animT = 0; // horloge des animations (ralentie pendant le ralenti final)
@@ -233,13 +162,50 @@ export function createRenderer(container) {
     bombs.clear();
     fires.clear();
     items.clear();
+    lavaMarks.clear();
+    waveMeshes.clear();
+    portals = [];
+    doorMeshes = [];
+    holeMeshes = [];
+    sandMeshes = [];
     effects.clear();
     focus = 0;
 
+    // Ambiance de la carte : ciel, brouillard, lumières, sol, caisses
+    theme = themeOf(state.map);
+    nightAlpha = theme.night ? 0.86 : 0;
+    const map = getMap(state.map, state.size);
+    scene.background.set(theme.background);
+    scene.fog.color.set(theme.background);
+    hemi.color.set(theme.hemi[0]);
+    hemi.groundColor.set(theme.hemi[1]);
+    hemi.intensity = theme.hemi[2];
+    sun.color.set(theme.sun[0]);
+    sun.intensity = theme.sun[1];
+    rim.color.set(theme.rim[0]);
+    rim.intensity = theme.rim[1];
+    ground.material.map?.dispose();
+    ground.material.map = groundTexture(theme);
+    ground.material.needsUpdate = true;
+    mat.cap.color.set(theme.cap);
+    mat.cap.emissive.set(theme.cap);
+    mat.cap.emissiveIntensity = theme.capGlow;
+    mat.neon.color.set(theme.strip).multiplyScalar(theme.stripGlow);
+    const crate = (crateCache[theme.crate] ||= crateTextures(theme.crate));
+    mat.crate.map = crate.map;
+    mat.crate.emissiveMap = crate.emissive;
+    mat.crate.emissive.set(crate.emissive ? 0xffffff : 0x000000);
+    mat.crate.emissiveIntensity = crate.emissive ? theme.crateGlow : 0;
+    mat.crate.needsUpdate = true;
+
     // Sol de l'arène
+    const ft = floorTextures(theme, cols, rows);
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(cols, rows),
-      new THREE.MeshStandardMaterial({ map: floorTexture(cols, rows), roughness: 0.55, metalness: 0.2 }),
+      new THREE.MeshStandardMaterial({
+        map: ft.map, roughness: theme.floorRough, metalness: theme.floorMetal,
+        emissive: ft.emissive ? 0xffffff : 0x000000, emissiveMap: ft.emissive, emissiveIntensity: ft.emissive ? theme.floorGlow : 0,
+      }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.set((cols - 1) / 2, 0, (rows - 1) / 2);
@@ -260,7 +226,7 @@ export function createRenderer(container) {
       const border = x === 0 || y === 0 || x === cols - 1 || y === rows - 1;
       m4.makeTranslation(x, 0.5, y);
       wallMesh.setMatrixAt(k, m4);
-      wallMesh.setColorAt(k, col.set(border ? THEME.border : THEME.pillar));
+      wallMesh.setColorAt(k, col.set(border ? theme.border : theme.pillar));
       if (!border) pillarCaps.push([x, y]);
     });
     wallMesh.castShadow = wallMesh.receiveShadow = true;
@@ -282,6 +248,42 @@ export function createRenderer(container) {
     strip(cols - 2, 0.04, (cols - 1) / 2, inner.z1);
     strip(0.04, rows - 2, inner.x0, (rows - 1) / 2);
     strip(0.04, rows - 2, inner.x1, (rows - 1) / 2);
+
+    // Tapis roulants (Néon City)
+    for (const [i, belt] of map.belts) {
+      const b = createBelt(belt.dx, belt.dy, theme.belt || theme.strip);
+      b.position.set(i % cols, 0, Math.floor(i / cols));
+      board.add(b);
+    }
+    // Sables mouvants (Désert), trous noirs (Espace), portes (Usine)
+    for (const i of map.sand) {
+      const m = createSand();
+      m.position.set(i % cols, 0.008, Math.floor(i / cols));
+      board.add(m);
+      sandMeshes.push(m);
+    }
+    for (const i of map.holes) {
+      const h = createHole();
+      h.position.set(i % cols, 0, Math.floor(i / cols));
+      board.add(h);
+      holeMeshes.push(h);
+    }
+    for (const d of state.doors || []) {
+      const m = createDoor(d.group);
+      m.position.set(d.i % cols, 0, Math.floor(d.i / cols));
+      m.userData.h = d.closed ? 0.9 : 0.04;
+      board.add(m);
+      doorMeshes.push({ mesh: m, i: d.i });
+    }
+
+    // Portails (Jungle) : chaque paire a sa couleur
+    const pairs = [...new Set([...map.portals].map(([a, b]) => Math.min(a, b)))].sort((a, b) => a - b);
+    for (const [i, dest] of map.portals) {
+      const portal = createPortal(PORTAL_COLORS[pairs.indexOf(Math.min(i, dest)) % PORTAL_COLORS.length]);
+      portal.position.set(i % cols, 0, Math.floor(i / cols));
+      board.add(portal);
+      portals.push(portal);
+    }
 
     // Caisses destructibles
     state.cells.forEach((c, i) => {
@@ -328,20 +330,74 @@ export function createRenderer(container) {
     camera.updateProjectionMatrix();
     effects.setScale(h * renderer.getPixelRatio(), camera.fov);
 
-    const tilt = THREE.MathUtils.degToRad(62); // inclinaison de la vue
+    const tilt = THREE.MathUtils.degToRad(camera.aspect < 1 ? 68 : 62); // inclinaison de la vue (plus à la verticale sur téléphone)
     const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2;
     const needH = rows * Math.sin(tilt) + 3; // marge pour le bandeau du haut
-    const needW = cols + 1.5;
+    const needW = cols + (camera.aspect < 1 ? 0.3 : 1.5); // téléphone en hauteur : on colle aux bords
     const dist = Math.max(needH / 2 / Math.tan(halfFov), needW / 2 / (Math.tan(halfFov) * camera.aspect));
     const cx = (cols - 1) / 2;
     const cz = (rows - 1) / 2 + 0.3;
     cameraBase.set(cx, Math.sin(tilt) * dist, cz + Math.cos(tilt) * dist);
     lookBase.set(cx, 0, cz);
-    // Le brouillard suit la distance de la caméra (sur un téléphone en hauteur, elle recule beaucoup)
-    scene.fog.near = dist * 1.05;
-    scene.fog.far = dist * 2.2;
+    tiltRad = tilt;
+    distFull = dist;
+    // Téléphone en hauteur dans la grande arène : on cadre environ 13 colonnes autour du joueur
+    distFollow = FOLLOW_COLS / 2 / (Math.tan(halfFov) * camera.aspect);
+    if (!camDist) {
+      camDist = dist;
+      camLook.copy(lookBase);
+    }
     camera.position.copy(cameraBase);
     camera.lookAt(lookBase);
+    nightCanvas.width = Math.round(w * 0.5);
+    nightCanvas.height = Math.round(h * 0.5);
+  }
+  let tiltRad = 1;
+  let distFull = 20;
+  let distFollow = 20;
+  let camDist = 0;
+  const camLook = new THREE.Vector3();
+  const tmpV = new THREE.Vector3();
+
+  // Ville de nuit : un calque sombre percé autour des joueurs (et des explosions)
+  const nightCanvas = document.createElement('canvas');
+  nightCanvas.className = 'night';
+  container.appendChild(nightCanvas);
+  const nightCtx = nightCanvas.getContext('2d');
+  let nightAlpha = 0;
+  function project(x, z) {
+    tmpV.set(x, 0.4, z).project(camera);
+    return [((tmpV.x + 1) / 2) * nightCanvas.width, ((1 - tmpV.y) / 2) * nightCanvas.height];
+  }
+  function drawNight(state, dt) {
+    const anyViewerAlive = viewers.some((id) => state.players[id]?.alive);
+    const target = theme.night ? (anyViewerAlive ? 0.86 : 0.4) : 0;
+    nightAlpha += (target - nightAlpha) * Math.min(1, dt * 3);
+    const g = nightCtx;
+    g.clearRect(0, 0, nightCanvas.width, nightCanvas.height);
+    if (nightAlpha < 0.01) return;
+    g.globalCompositeOperation = 'source-over';
+    g.fillStyle = `rgba(2, 3, 9, ${nightAlpha})`;
+    g.fillRect(0, 0, nightCanvas.width, nightCanvas.height);
+    g.globalCompositeOperation = 'destination-out';
+    const hole = (x, z, r) => {
+      const [sx, sy] = project(x, z);
+      const [ex] = project(x + r, z);
+      const pr = Math.max(4, Math.abs(ex - sx));
+      const grad = g.createRadialGradient(sx, sy, pr * 0.45, sx, sy, pr);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(sx, sy, pr, 0, Math.PI * 2);
+      g.fill();
+    };
+    for (const id of viewers) {
+      const p = state.players[id];
+      if (p?.alive) hole(p.x, p.y, 3.3);
+    }
+    for (const f of state.fires) hole(f.x, f.y, 1.3); // les explosions éclairent
+    g.globalCompositeOperation = 'source-over';
   }
   window.addEventListener('resize', resize);
 
@@ -390,8 +446,82 @@ export function createRenderer(container) {
         if (p) effects.pickup(p.x, p.y, ITEM_COLORS[e.item]);
       } else if (e.type === 'wall') {
         effects.dust(e.x, e.y);
+      } else if (e.type === 'lava') {
+        effects.lava(e.x, e.y);
+        shake = Math.min(shake + 0.05, 0.35);
+      } else if (e.type === 'swallow') {
+        effects.ring(e.x, e.y, 0x9a6bff, 1.4);
+        effects.pickup(e.x, e.y, 0x9a6bff);
+      } else if (e.type === 'splash') {
+        effects.splash(e.x, e.y);
+      } else if (e.type === 'wave') {
+        for (let x = 2; x < cols - 2; x += 3) effects.splash(x + Math.random(), e.row);
+      } else if (e.type === 'portal') {
+        const from = portals.find((p) => p.position.x === e.from % cols && p.position.z === Math.floor(e.from / cols));
+        const to = portals.find((p) => p.position.x === e.to % cols && p.position.z === Math.floor(e.to / cols));
+        for (const p of [from, to]) if (p) effects.pickup(p.position.x, p.position.z, p.userData.color);
       }
     }
+
+    // Décor animé : tapis qui défilent, portails qui tournent, ambiance de la carte
+    chevronTexture().offset.x -= gdt * BELT_SPEED * 0.5;
+    for (const p of portals) {
+      p.userData.inner.rotation.z = animT * 3;
+      p.userData.disc.material.opacity = 0.2 + Math.sin(animT * 2) * 0.05;
+    }
+    effects.ambient(theme.ambient, cols, rows, gdt);
+    for (const m of sandMeshes) m.rotation.z += gdt * 0.6;
+    for (const h of holeMeshes) {
+      h.userData.ring.rotation.z = -animT * 2.5;
+      h.userData.disk.rotation.z = animT;
+      effects.vortex(h.position.x, h.position.z);
+    }
+    for (const d of doorMeshes) {
+      const door = (state.doors || []).find((o) => o.i === d.i);
+      const target = door?.closed ? 0.9 : 0.04;
+      const u = d.mesh.userData;
+      u.h += (target - u.h) * Math.min(1, dt * 10);
+      u.shutter.scale.y = u.h / 0.9;
+      u.shutter.position.y = u.h / 2;
+    }
+    // Plage : la rangée scintille, puis l'eau monte
+    sync(
+      waveMeshes,
+      state.waves || [],
+      (w) => w.row,
+      (w) => {
+        const m = createWave(cols);
+        m.position.set((cols - 1) / 2, 0, w.row);
+        return m;
+      },
+      (m, w) => {
+        const u = m.userData;
+        u.warn.visible = !w.flooding;
+        u.water.visible = w.flooding;
+        if (!w.flooding) u.warn.material.opacity = 0.15 + 0.2 * Math.abs(Math.sin(animT * 6));
+        else u.water.scale.y = Math.min(1, (u.water.scale.y || 0.05) + dt * 4);
+        if (w.flooding && Math.random() < 0.3) effects.splash(1 + Math.random() * (cols - 3), w.row);
+      },
+    );
+
+    // Volcan : les cases qui vont jaillir rougeoient de plus en plus vite
+    sync(
+      lavaMarks,
+      (state.lava || []).filter((l) => !l.burning),
+      (l) => l.x + ',' + l.y,
+      (l) => {
+        const m = createLavaWarning();
+        m.position.x = l.x;
+        m.position.z = l.y;
+        return m;
+      },
+      (m, l) => {
+        const k = Math.max(0, l.timer);
+        m.material.opacity = 0.3 + 0.25 * Math.abs(Math.sin(animT * (4 + (1.6 - k) * 6)));
+        m.scale.setScalar(0.6 + 0.4 * (1 - k / 1.6));
+        if (Math.random() < 0.15) effects.flame(l.x, l.y, false, 0.6);
+      },
+    );
 
     // Caisses : quand elles brûlent, elles s'embrasent, rétrécissent et volent en éclats
     for (const [i, mesh] of blocks) {
@@ -555,21 +685,47 @@ export function createRenderer(container) {
 
     effects.update(gdt);
 
-    // Caméra : léger tremblement, zoom sur le gagnant en fin de manche
+    // Caméra : suit le joueur (téléphone, grande arène), tremble un peu, zoome sur le gagnant
+    const fp = followId !== null ? state.players[followId] : null;
+    const following = !!fp && fp.alive && camera.aspect < 1 && cols > 15;
+    const half = FOLLOW_COLS / 2 - 0.5;
+    const tx = following ? Math.min(Math.max(fp.x, half), cols - 1 - half) : lookBase.x;
+    const tz = following ? Math.min(Math.max(fp.y + 0.3, 4), rows - 5) : lookBase.z;
+    const k = Math.min(1, dt * 4);
+    camLook.x += (tx - camLook.x) * k;
+    camLook.z += (tz - camLook.z) * k;
+    camDist += ((following ? distFollow : distFull) - camDist) * k;
+    scene.fog.near = camDist * 1.05;
+    scene.fog.far = camDist * 2.2;
     focus += ((winner ? 1 : 0) - focus) * Math.min(1, dt * 3);
     if (winner) focusPoint.set(winner.x, 0, winner.y);
     shake = Math.max(0, shake - dt * 1.3);
     const zoom = focus * 0.32;
+    const by = Math.sin(tiltRad) * camDist;
+    const bz = Math.cos(tiltRad) * camDist;
     camera.position.set(
-      cameraBase.x + (focusPoint.x - lookBase.x) * zoom + (Math.random() - 0.5) * shake,
-      cameraBase.y * (1 - zoom * 0.9) + (Math.random() - 0.5) * shake,
-      cameraBase.z + (focusPoint.z - lookBase.z) * zoom - (cameraBase.z - lookBase.z) * zoom * 0.5 + (Math.random() - 0.5) * shake,
+      camLook.x + (focusPoint.x - camLook.x) * zoom + (Math.random() - 0.5) * shake,
+      by * (1 - zoom * 0.9) + (Math.random() - 0.5) * shake,
+      camLook.z + bz + (focusPoint.z - camLook.z) * zoom - bz * zoom * 0.5 + (Math.random() - 0.5) * shake,
     );
-    camera.lookAt(lookBase.x + (focusPoint.x - lookBase.x) * focus * 0.6, 0, lookBase.z + (focusPoint.z - lookBase.z) * focus * 0.6);
+    camera.lookAt(camLook.x + (focusPoint.x - camLook.x) * focus * 0.6, 0, camLook.z + (focusPoint.z - camLook.z) * focus * 0.6);
+    drawNight(state, dt);
 
     if (high) composer.render();
     else renderer.render(scene, camera);
   }
 
-  return { reset, render, setQuality };
+  return {
+    reset,
+    render,
+    setQuality,
+    // Joueur suivi par la caméra sur téléphone (ou null)
+    setFollow(id) {
+      followId = id;
+    },
+    // Ville de nuit : joueurs pilotés sur cet appareil (on voit autour d'eux)
+    setViewers(ids) {
+      viewers = ids;
+    },
+  };
 }

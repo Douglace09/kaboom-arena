@@ -5,6 +5,12 @@ export const SKINS = [
   { id: 'mochi', name: 'Mochi', kind: 'Créature', desc: 'Boule toute douce, bombes-bonbons' },
   { id: 'zap', name: 'Zap', kind: 'Robot', desc: 'Drone volant, bombes cubes néon' },
   { id: 'pepin', name: 'Pépin', kind: 'Créature', desc: 'Petite pousse, bombes-glands' },
+  { id: 'croco', name: 'Croco', kind: 'Créature', desc: 'Petit crocodile, bombes-œufs' },
+  { id: 'nova', name: 'Nova', kind: 'Astronaute', desc: 'Petite astronaute, bombes-planètes' },
+  { id: 'pingu', name: 'Pingu', kind: 'Créature', desc: 'Pingouin, bombes-boules de neige' },
+  { id: 'bloub', name: 'Bloub', kind: 'Créature', desc: 'Gelée qui tremblote, bombes-bulles' },
+  { id: 'cactus', name: 'Cactus', kind: 'Plante', desc: 'Cactus rigolo, bombes-fleurs' },
+  { id: 'glouton', name: 'Glouton', kind: 'Monstre', desc: 'Petit monstre à grande bouche, bonbons acidulés' },
 ];
 
 export const SKIN_IDS = SKINS.map((s) => s.id);

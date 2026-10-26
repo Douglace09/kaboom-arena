@@ -18,7 +18,30 @@ const SFX = {
   sudden: 0.5,
   win: 0.6,
   click: 0.4,
+  lava: 0.55,
+  rumble: 0.5,
+  portal: 0.45,
+  door: 0.35,
+  swallow: 0.5,
+  splash: 0.5,
+  wave: 0.5,
 };
+
+// Musique de chaque carte (le menu et la carte Classique gardent la musique d'origine)
+const MUSIC = {
+  menu: 'music',
+  classique: 'music',
+  neon: 'music-neon',
+  jungle: 'music-jungle',
+  banquise: 'music-banquise',
+  volcan: 'music-volcan',
+  desert: 'music-desert',
+  usine: 'music-usine',
+  espace: 'music-espace',
+  plage: 'music-plage',
+  ville: 'music-ville',
+};
+const MUSIC_VOLUME = 0.32;
 
 function load(key) {
   try {
@@ -38,9 +61,28 @@ export function createSound() {
   for (const [name, volume] of Object.entries(SFX)) {
     sounds[name] = new Howl({ src: [`${BASE}${name}.mp3`], volume, preload: true });
   }
-  const music = new Howl({ src: [`${BASE}music.mp3`], loop: true, volume: 0.32, html5: false });
+  const tracks = {}; // chargées seulement quand on en a besoin
+  const track = (file) => (tracks[file] ||= new Howl({ src: [`${BASE}${file}.mp3`], loop: true, volume: 0 }));
   let muted = load('kaboom-muted') === '1';
   let musicOn = false;
+  let wanted = 'menu';
+  let playing = null;
+
+  // Fondu enchaîné d'une musique à l'autre
+  function applyMusic() {
+    if (!musicOn) return;
+    const file = MUSIC[wanted] || 'music';
+    if (playing === file) return;
+    if (playing) {
+      const old = track(playing);
+      old.fade(old.volume(), 0, 600);
+      setTimeout(() => old.volume() === 0 && old.pause(), 650);
+    }
+    const next = track(file);
+    if (!next.playing()) next.play();
+    next.fade(next.volume(), MUSIC_VOLUME, 800);
+    playing = file;
+  }
   Howler.mute(muted);
 
   // Évite qu'un même son se superpose trop (ex. 6 explosions en chaîne au même instant)
@@ -71,7 +113,12 @@ export function createSound() {
     startMusic() {
       if (musicOn) return;
       musicOn = true;
-      music.play();
+      applyMusic();
+    },
+    // Choisit la musique : 'menu' ou l'identifiant d'une carte
+    setMusic(id) {
+      wanted = id;
+      applyMusic();
     },
     // Joue les sons correspondant aux événements de la partie
     events(events, isMine) {
@@ -109,6 +156,30 @@ export function createSound() {
             break;
           case 'sudden':
             play('sudden');
+            break;
+          case 'lava':
+            play('lava', { rate: 0.9 + Math.random() * 0.2 });
+            break;
+          case 'lavaWarn':
+            play('rumble');
+            break;
+          case 'portal':
+            play('portal');
+            break;
+          case 'door':
+            play('door');
+            break;
+          case 'swallow':
+            play('swallow');
+            break;
+          case 'splash':
+            play('splash', { rate: 0.9 + Math.random() * 0.2 });
+            break;
+          case 'wave':
+            play('wave');
+            break;
+          case 'waveWarn':
+            play('rumble', { rate: 1.4 });
             break;
         }
       }

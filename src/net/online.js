@@ -5,7 +5,7 @@
 // - Interpolation : les autres joueurs sont affichés avec 0,1 s de retard, de façon fluide.
 import { SERVER_URL } from './config.js';
 import { predictMove } from '../game/game.js';
-import { TICK, COLS, ROWS } from '../game/constants.js';
+import { TICK } from '../game/constants.js';
 
 const INTERP_DELAY = 0.1; // retard d'affichage des autres joueurs (s)
 const CONNECT_TIMEOUT = 90000; // un serveur Render endormi met jusqu'à ~1 min à se réveiller
@@ -100,7 +100,7 @@ export function createOnline({ onLobby, onJoined, onError, onClose }) {
       offset = { x: 0, y: 0 };
       roundChanged = true;
     }
-    const s = { ...m, cells, cols: COLS, rows: ROWS };
+    const s = { ...m, cells };
     snaps.push({ t: now(), s });
     if (snaps.length > 30) snaps.shift();
     events.push(...m.events);
@@ -140,6 +140,7 @@ export function createOnline({ onLobby, onJoined, onError, onClose }) {
       send({ t: 'join', code, name, skin });
     },
     setSkin: (skin) => send({ t: 'skin', skin }),
+    setMap: (map) => send({ t: 'map', map }),
     start: () => send({ t: 'start' }),
     rematch: () => send({ t: 'rematch' }),
     addBot: () => send({ t: 'addBot' }),

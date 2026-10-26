@@ -84,6 +84,18 @@ export function createHud() {
   }
 
   return {
+    // Annonce de la carte en début de manche
+    banner(title, desc) {
+      const el = document.getElementById('banner');
+      document.getElementById('banner-title').textContent = title;
+      document.getElementById('banner-desc').textContent = desc;
+      el.hidden = false;
+      el.classList.remove('show');
+      void el.offsetWidth;
+      el.classList.add('show');
+      clearTimeout(this._bannerTimer);
+      this._bannerTimer = setTimeout(() => (el.hidden = true), 2600);
+    },
     setPortraits(p) {
       portraits = p;
       last = '';
@@ -129,6 +141,7 @@ export function createHud() {
         .join('|');
       if (key === last) return;
       last = key;
+      playersEl.classList.toggle('many', state.players.length > 4); // bandeau compact à plus de 4 joueurs
       playersEl.innerHTML = state.players.map(playerTag).join('');
     },
   };

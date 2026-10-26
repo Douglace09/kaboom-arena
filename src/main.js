@@ -4,6 +4,7 @@ import { createGame, update } from './game/game.js';
 import { createBot } from './game/bot.js';
 import { TICK } from './game/constants.js';
 import { SKINS, SKIN_IDS, isSkin, randomSkin } from './game/skins.js';
+import { isMap, randomMap, getMap } from './game/maps.js';
 import { createRenderer } from './render/renderer.js';
 import { renderPortraits } from './render/characters.js';
 import { PLAYER_COLORS } from './render/colors.js';
@@ -37,12 +38,22 @@ const keyboard = createKeyboard();
 const hud = createHud();
 
 // Portraits des personnages (dans leur couleur « signature »), pour les menus
-const portraits = renderPortraits(SKINS, (id) => PLAYER_COLORS[SKIN_IDS.indexOf(id)]);
+const portraits = renderPortraits(SKINS, (id) => PLAYER_COLORS[SKIN_IDS.indexOf(id) % PLAYER_COLORS.length]);
 hud.setPortraits(portraits);
 
 let mySkin = isSkin(store.get('kaboom-skin')) ? store.get('kaboom-skin') : 'boulon';
+let myMap = isMap(store.get('kaboom-map')) || store.get('kaboom-map') === 'random' ? store.get('kaboom-map') : 'random';
+let lastMap = null;
+let aiCount = Math.min(7, Math.max(1, Number(store.get('kaboom-ai')) || 1)); // adversaires IA hors ligne
 const screens = createScreens({
   portraits,
+  onMap(map) {
+    sound.play('click');
+    if (mode === 'online') return online.setMap(map); // seul l'hôte peut changer la carte
+    myMap = map;
+    store.set('kaboom-map', map);
+    screens.setMenuMap(map);
+  },
   onSkin(skin) {
     sound.play('click');
     mySkin = skin;
@@ -52,6 +63,14 @@ const screens = createScreens({
   },
 });
 screens.setMenuSkin(mySkin);
+screens.setMenuMap(myMap);
+
+// Début de manche : musique de la carte et annonce de son nom
+function announceMap(mapId) {
+  const m = getMap(mapId);
+  sound.setMusic(m.id);
+  hud.banner(m.name, m.desc);
+}
 
 // Qualité graphique : haute sur ordinateur, basse sur écran tactile (modifiable)
 let highQuality = store.get('kaboom-quality') ? store.get('kaboom-quality') === 'high' : !touch.enabled;
@@ -62,7 +81,7 @@ const specialName = touch.enabled ? 'SPÉCIAL' : 'E';
 // mode : 'menu', 'bot' (contre l'IA), 'local' (2 sur le même clavier) ou 'online'
 let mode = 'menu';
 let state = createGame({ playerCount: 2, seed: 1, skins: ['boulon', 'mochi'], shuffleSpawns: false }); // arène derrière le menu
-let bot = null;
+let bots = [];
 let paused = true;
 let endShown = false;
 
@@ -104,7 +123,7 @@ $('overlay').addEventListener('click', (e) => {
 function startOffline(m) {
   mode = m;
   if (m === 'bot') {
-    hud.setContext({ nameOf: (id) => (id === 1 ? 'IA' : 'Toi'), isMine: (id) => id === 0, soloMine: true, specialKey: () => specialName, wins: () => null });
+    hud.setContext({ nameOf: (id) => (id === 0 ? 'Toi' : aiCount > 1 ? `IA ${id}` : 'IA'), isMine: (id) => id === 0, soloMine: true, specialKey: () => specialName, wins: () => null });
     hud.setHelp(touch.enabled ? '' : 'ZQSD ou flèches · Bombe : Espace · Spécial : E · Pause : Échap');
   } else {
     hud.setContext({ nameOf: (id) => `J${id + 1}`, isMine: () => true, soloMine: false, specialKey: (id) => (id === 0 ? 'E' : 'Ctrl droit'), wins: () => null });
@@ -114,9 +133,17 @@ function startOffline(m) {
 }
 
 function newRound() {
-  const other = mode === 'bot' ? randomSkin([mySkin]) : SKIN_IDS[(SKIN_IDS.indexOf(mySkin) + 1) % SKIN_IDS.length];
-  state = createGame({ playerCount: 2, seed: Math.floor(Math.random() * 1e9), skins: [mySkin, other] });
-  bot = mode === 'bot' ? createBot(1) : null;
+  const count = mode === 'bot' ? 1 + aiCount : 2;
+  const skins = [mySkin];
+  if (mode === 'bot') for (let i = 1; i < count; i++) skins.push(randomSkin(skins));
+  else skins.push(SKIN_IDS[(SKIN_IDS.indexOf(mySkin) + 1) % SKIN_IDS.length]);
+  const map = myMap === 'random' ? randomMap(lastMap) : myMap;
+  lastMap = map;
+  state = createGame({ playerCount: count, seed: Math.floor(Math.random() * 1e9), skins, map });
+  announceMap(map);
+  bots = mode === 'bot' ? Array.from({ length: count - 1 }, (_, i) => createBot(i + 1)) : [];
+  renderer.setFollow(touch.enabled ? 0 : null);
+  renderer.setViewers(mode === 'local' ? [0, 1] : [0]);
   paused = false;
   endShown = false;
   screens.hide();
@@ -133,7 +160,7 @@ function myInput() {
 }
 
 function offlineInputs() {
-  if (mode === 'bot') return [myInput(), bot.think(state)];
+  if (mode === 'bot') return [myInput(), ...bots.map((b) => b.think(state))];
   return [keyboard.read(0), keyboard.read(1)];
 }
 
@@ -142,10 +169,10 @@ function showOfflineEnd() {
   let title = 'Égalité !';
   let color = '';
   if (state.winner !== null) {
-    title = mode === 'bot' ? (state.winner === 0 ? 'Tu as gagné !' : "L'IA a gagné !") : `Joueur ${state.winner + 1} gagne !`;
+    title = mode === 'bot' ? (state.winner === 0 ? 'Tu as gagné !' : aiCount > 1 ? `L'IA ${state.winner} a gagné !` : "L'IA a gagné !") : `Joueur ${state.winner + 1} gagne !`;
     color = PLAYER_COLORS[state.players[state.winner].color];
   }
-  if (state.winner !== null && !(mode === 'bot' && state.winner === 1)) sound.play('win');
+  if (state.winner !== null && !(mode === 'bot' && state.winner !== 0)) sound.play('win');
   screens.show('end', { title, color });
 }
 
@@ -169,7 +196,17 @@ function backToMenu(message = '') {
   paused = true;
   hud.clear();
   hud.setHelp('');
+  sound.setMusic('menu');
   screens.setMenuSkin(mySkin);
+  screens.setMenuMap(myMap);
+screens.setMenuMap(myMap);
+
+// Début de manche : musique de la carte et annonce de son nom
+function announceMap(mapId) {
+  const m = getMap(mapId);
+  sound.setMusic(m.id);
+  hud.banner(m.name, m.desc);
+}
   screens.show('menu', { sub: message });
 }
 
@@ -194,7 +231,10 @@ const online = createOnline({
     const me = lobby.members.find((m) => m.id === you);
     if ((lobby.phase === 'roundEnd' || lobby.phase === 'podium') && lastLobbyPhase === 'playing' && lobby.lastRoundWinner === me?.id) sound.play('win');
     lastLobbyPhase = lobby.phase;
-    if (lobby.phase === 'lobby') screens.lobby(lobby, you);
+    if (lobby.phase === 'lobby') {
+      screens.lobby(lobby, you);
+      sound.setMusic('menu');
+    }
     else if (lobby.phase === 'playing') screens.hide();
     else if (lobby.phase === 'roundEnd') screens.roundEnd(lobby, you);
     else if (lobby.phase === 'podium') screens.podium(lobby, you);
@@ -247,6 +287,22 @@ $('copy-link').addEventListener('click', async () => {
 // ---------- Boutons hors ligne et clavier ----------
 
 $('mode-bot').addEventListener('click', () => startOffline('bot'));
+function refreshAi() {
+  $('ai-count').textContent = aiCount;
+  $('ai-note').textContent = aiCount + 1 > 4 ? 'grande arène' : 'petite arène';
+  $('ai-minus').disabled = aiCount <= 1;
+  $('ai-plus').disabled = aiCount >= 7;
+  store.set('kaboom-ai', String(aiCount));
+}
+$('ai-minus').addEventListener('click', () => {
+  aiCount = Math.max(1, aiCount - 1);
+  refreshAi();
+});
+$('ai-plus').addEventListener('click', () => {
+  aiCount = Math.min(7, aiCount + 1);
+  refreshAi();
+});
+refreshAi();
 $('mode-local').addEventListener('click', () => startOffline('local'));
 if (touch.enabled) $('mode-local').hidden = true; // un seul jeu de commandes à l'écran
 $('replay').addEventListener('click', newRound);
@@ -292,11 +348,15 @@ function frame(now) {
       const view = online.view(dt);
       if (view) {
         if (online.takeRoundChange()) {
+          renderer.setFollow(touch.enabled ? online.myPid() : null);
+          renderer.setViewers([online.myPid()]);
           renderer.reset(view);
           hud.clear();
+          announceMap(view.map);
         }
         renderer.render(view, now / 1000);
         hud.update(view);
+        touch.setSpecial(view.players[online.myPid()]?.special ?? null);
         sound.events(view.events, (id) => id === online.myPid());
         return;
       }
@@ -305,6 +365,7 @@ function frame(now) {
     renderer.render(state, now / 1000);
     if (mode === 'bot' || mode === 'local') {
       if (!paused) hud.update(state);
+      touch.setSpecial(state.players[0]?.special ?? null);
       sound.events(state.events, (id) => mode === 'local' || id === 0);
       if (state.phase === 'over' && !endShown) showOfflineEnd();
     }

@@ -2,7 +2,8 @@
 // Elle lit l'état du jeu et renvoie des commandes comme un vrai joueur
 // ({ dx, dy, bomb, special }) : la logique ne fait aucune différence entre les deux.
 import { CELL, BOMB_TIMER, SLOW_SPEED } from './constants.js';
-import { idx, inBounds } from './grid.js';
+import { idx, inBounds, setDims } from './grid.js';
+import { getMap } from './maps.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const IDLE = { dx: 0, dy: 0, bomb: false, special: false };
@@ -18,6 +19,7 @@ function blastCells(state, bx, by, range) {
       if (!inBounds(x, y)) break;
       const c = state.cells[idx(x, y)];
       if (c === CELL.WALL || c === CELL.BURNING) break;
+      if (state.doors?.some((d) => d.closed && d.i === idx(x, y))) break; // porte fermée
       cells.push(idx(x, y));
       if (c === CELL.BLOCK) break;
       if (state.items.some((it) => it.x === x && it.y === y)) break;
@@ -32,6 +34,8 @@ function blastCells(state, bx, by, range) {
 function dangerMap(state, me, { extraBomb = null, ownNow = false } = {}) {
   const danger = new Array(state.cells.length).fill(Infinity);
   for (const f of state.fires) danger[idx(f.x, f.y)] = 0;
+  // Volcan : une case qui rougeoit va jaillir
+  for (const l of state.lava || []) danger[idx(l.x, l.y)] = Math.min(danger[idx(l.x, l.y)], l.burning ? 0 : Math.max(0, l.timer));
 
   const bombs = extraBomb ? [...state.bombs, extraBomb] : state.bombs;
   const times = bombs.map((b) => {
@@ -67,6 +71,10 @@ function walkable(state, me, c) {
   const x = c % state.cols;
   const y = Math.floor(c / state.cols);
   if (state.items.some((it) => it.type === 'skull' && it.x === x && it.y === y)) return false; // on évite les malus
+  const map = getMap(state.map, state.size);
+  if (map.portals.has(c)) return false; // l'IA ne sait pas utiliser les portails : elle les contourne
+  if (map.holes.has(c)) return false; // trou noir
+  if (state.doors?.some((d) => d.i === c && (d.closed || d.group === state.doorGroup))) return false; // porte fermée ou sur le point de se fermer
   const b = state.bombs.find((b) => b.x === x && b.y === y);
   return !b || b.pass.includes(me.id);
 }
@@ -75,7 +83,9 @@ function walkable(state, me, c) {
 // strict = ne passe que par des cases sûres ; sinon accepte une case menacée
 // si on a le temps de la traverser avant qu'elle explose.
 function explore(state, me, start, danger, strict) {
-  const step = 1 / (me.skull?.type === 'slow' ? SLOW_SPEED : me.speed);
+  // Sables mouvants ou vagues : l'IA compte large pour avoir le temps de fuir
+  const slowMap = getMap(state.map, state.size).sand.size || state.map === 'plage' ? 1 / 0.55 : 1;
+  const step = slowMap / (me.skull?.type === 'slow' ? SLOW_SPEED : me.speed);
   const dist = new Map([[start, 0]]);
   const parent = new Map();
   const order = [start];
@@ -164,6 +174,7 @@ export function createBot(id) {
 
   return {
     think(state) {
+      setDims(state.cols, state.rows);
       const me = state.players[id];
       const dt = state.time - lastTime;
       lastTime = state.time;

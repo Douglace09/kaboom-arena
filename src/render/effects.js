@@ -230,6 +230,53 @@ export function createEffects(scene) {
       tmp.set(color).multiplyScalar(2);
       glow.spawn(x + rand(-0.1, 0.1), rand(0.2, 0.6), z + rand(-0.1, 0.1), { life: 0.3, vx: 0, vy: 0.2, vz: 0, gravity: 0, size: 0.35, sizeEnd: 0, color: tmp });
     },
+    // Lave qui jaillit : gerbe de magma et braises
+    lava(x, z) {
+      burst(x, 0.3, z, { count: 18, color: [0xffa040, 0xff5a14, 0xffd070], speed: 1.8, up: 5, life: 0.8, size: 0.28, gravity: 9, hdr: 1.8 });
+      burst(x, 0.3, z, { count: 8, color: 0x3a2420, speed: 1.2, up: 1.2, life: 1.2, size: 0.45, sizeEnd: 1, gravity: -0.5, drag: 2, pool: smoke, alpha: 0.5 });
+    },
+    // Particules d'ambiance propres à chaque carte
+    ambient(kind, cols, rows, dt) {
+      if (!kind) return;
+      const rate = { motes: 3, fireflies: 2.5, snow: 12, embers: 4, dust: 5, stars: 3 }[kind] * density;
+      let count = rate * dt;
+      while (count > 0) {
+        if (count < 1 && Math.random() > count) break;
+        count -= 1;
+        const x = rand(-1, cols);
+        const z = rand(-1, rows);
+        if (kind === 'dust') {
+          tmp.set(0xd8b886);
+          smoke.spawn(x, rand(0.1, 0.8), z, { life: rand(2, 3.5), vx: rand(0.8, 1.6), vy: 0, vz: rand(-0.2, 0.2), gravity: 0, drag: 0, size: rand(0.08, 0.16), color: tmp, alpha: 0.5 });
+        } else if (kind === 'stars') {
+          tmp.set(0xc8d4ff).multiplyScalar(1.4);
+          glow.spawn(x, rand(1.5, 3), z, { life: rand(1.5, 3), vx: 0, vy: 0, vz: 0, gravity: 0, drag: 0, size: rand(0.05, 0.1), sizeEnd: 0, color: tmp });
+        } else if (kind === 'snow') {
+          tmp.set(0xffffff);
+          smoke.spawn(x, rand(4, 7), z, { life: 7, vx: rand(-0.2, 0.2), vy: -0.9, vz: rand(-0.1, 0.1), gravity: 0, drag: 0, size: rand(0.06, 0.12), color: tmp, alpha: 0.85 });
+        } else if (kind === 'embers') {
+          tmp.set(Math.random() < 0.5 ? 0xff7a30 : 0xffb050).multiplyScalar(1.8);
+          glow.spawn(x, 0.1, z, { life: rand(2, 4), vx: rand(-0.2, 0.2), vy: rand(0.5, 1.2), vz: rand(-0.2, 0.2), gravity: 0, drag: 0, size: rand(0.06, 0.12), sizeEnd: 0, color: tmp });
+        } else if (kind === 'fireflies') {
+          tmp.set(0xc8ff6a).multiplyScalar(2);
+          glow.spawn(x, rand(0.4, 1.6), z, { life: rand(2.5, 4), vx: rand(-0.3, 0.3), vy: rand(-0.1, 0.1), vz: rand(-0.3, 0.3), gravity: 0, drag: 0, size: rand(0.08, 0.14), sizeEnd: 0.02, color: tmp });
+        } else {
+          tmp.set(Math.random() < 0.5 ? 0x35e0ff : 0xff3dd2).multiplyScalar(1.6);
+          glow.spawn(x, rand(0, 0.5), z, { life: rand(3, 5), vx: 0, vy: rand(0.2, 0.5), vz: 0, gravity: 0, drag: 0, size: rand(0.05, 0.1), sizeEnd: 0, color: tmp });
+        }
+      }
+    },
+    // Espace : particules aspirées par un trou noir
+    vortex(x, z) {
+      if (Math.random() > 0.3 * density) return;
+      const a = Math.random() * Math.PI * 2;
+      tmp.set(Math.random() < 0.5 ? 0x9a6bff : 0xffa060).multiplyScalar(1.4);
+      glow.spawn(x + Math.cos(a) * 0.9, 0.15, z + Math.sin(a) * 0.9, { life: 0.6, vx: -Math.cos(a) * 1.4 - Math.sin(a) * 0.8, vy: 0, vz: -Math.sin(a) * 1.4 + Math.cos(a) * 0.8, gravity: 0, drag: 0, size: 0.1, sizeEnd: 0, color: tmp });
+    },
+    // Plage : éclaboussures
+    splash(x, z) {
+      burst(x, 0.2, z, { count: 14, color: [0xbfe6ff, 0x6fc8ff, 0xffffff], speed: 1.8, up: 3, life: 0.6, size: 0.18, gravity: 8, hdr: 1.2 });
+    },
     ring(x, z, color, size) {
       const r = rings[ringCursor];
       ringCursor = (ringCursor + 1) % rings.length;

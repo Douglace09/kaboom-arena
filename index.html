@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Kaboom Arena</title>
   </head>
   <body>
@@ -18,6 +18,7 @@
     </div>
 
     <div id="toast" hidden></div>
+    <div id="banner" hidden><strong id="banner-title"></strong><span id="banner-desc"></span></div>
 
     <div id="overlay">
       <div class="card">
@@ -43,6 +44,19 @@
           </form>
 
           <h2>Sur cet appareil</h2>
+          <div class="field">
+            <span>Carte</span>
+            <div id="map-picker" class="map-picker"></div>
+          </div>
+          <div class="field">
+            <span>Adversaires IA (contre l'IA)</span>
+            <div class="stepper">
+              <button id="ai-minus" type="button" aria-label="Une IA de moins">−</button>
+              <strong id="ai-count">1</strong>
+              <button id="ai-plus" type="button" aria-label="Une IA de plus">+</button>
+              <small id="ai-note">petite arène</small>
+            </div>
+          </div>
           <div class="row">
             <button id="mode-bot">Contre l'IA</button>
             <button id="mode-local">2 joueurs (même clavier)</button>
@@ -76,6 +90,10 @@
           <div class="field">
             <span>Ton personnage</span>
             <div id="lobby-skins" class="skin-picker"></div>
+          </div>
+          <div class="field">
+            <span>Carte <em id="lobby-map-note"></em></span>
+            <div id="lobby-maps" class="map-picker"></div>
           </div>
           <div id="host-controls" class="buttons">
             <div class="row">

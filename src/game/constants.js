@@ -1,7 +1,5 @@
 // Réglages de la logique du jeu (aucun lien avec l'affichage)
 
-export const COLS = 15; // largeur de l'arène en cases
-export const ROWS = 13; // hauteur de l'arène en cases
 
 export const TICK = 1 / 60; // la logique avance par pas fixes de 1/60 s
 
@@ -30,6 +28,28 @@ export const DASH_FACTOR = 3.2; // multiplicateur de vitesse pendant le sprint
 export const DASH_COOLDOWN = 1.5; // attente entre deux sprints
 export const SKULL_TIME = 10; // durée du malus
 
+// Cartes
+export const BELT_SPEED = 2.2; // vitesse des tapis roulants (cases/s)
+export const ICE_ACCEL = 7; // banquise : accélération (cases/s²)
+export const ICE_FRICTION = 2.4; // banquise : ralentissement quand on lâche la touche
+export const ICE_BRAKE = 10; // banquise : freinage quand on appuie dans l'autre sens
+export const ICE_START = 1.4; // banquise : vitesse de départ
+export const LAVA_FIRST = 12; // volcan : première éruption après 12 s
+export const LAVA_EVERY = 7; // puis toutes les 7 s
+export const LAVA_WARN = 1.6; // la case rougeoie 1,6 s avant de jaillir
+export const LAVA_BURN = 0.9; // durée des flammes de lave
+export const LAVA_COUNT = 4; // nombre de cases par éruption (augmente avec le temps)
+
+export const SAND_SLOW = 0.55; // désert : vitesse dans les sables mouvants
+export const WATER_SLOW = 0.5; // plage : vitesse dans une rangée inondée
+export const WAVE_FIRST = 10; // plage : première vague après 10 s
+export const WAVE_EVERY = 8; // puis toutes les 8 s
+export const WAVE_WARN = 2; // la rangée scintille 2 s avant d'être inondée
+export const WAVE_FLOOD = 3; // durée de l'inondation
+export const DOOR_PERIOD = 5; // usine : les portes changent toutes les 5 s
+export const HOLE_PULL = 2; // espace : portée d'aspiration des trous noirs (cases)
+export const HOLE_SPEED = 3; // vitesse d'une bombe aspirée
+
 // Mort subite
 export const SUDDEN_DEATH_AT = 120; // secondes avant le début du rétrécissement
 export const SUDDEN_DEATH_STEP = 0.3; // une case se ferme toutes les 0,3 s
@@ -53,10 +73,3 @@ export const ITEM_WEIGHTS = [
 // Effets possibles du malus (crâne)
 export const SKULL_EFFECTS = ['inverse', 'slow', 'autobomb', 'nobomb'];
 
-// Coins de départ : J1 en haut à gauche, J2 en bas à droite, puis J3, J4
-export const SPAWNS = [
-  { x: 1, y: 1 },
-  { x: COLS - 2, y: ROWS - 2 },
-  { x: COLS - 2, y: 1 },
-  { x: 1, y: ROWS - 2 },
-];

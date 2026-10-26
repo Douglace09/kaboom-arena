@@ -1,5 +1,5 @@
-// Couleur de chaque joueur (J1 à J4), partagée entre la 3D et l'interface
-export const PLAYER_COLORS = ['#35e0ff', '#ff4fa3', '#ffd23f', '#7dff6b'];
+// Couleur de chaque joueur (J1 à J8), partagée entre la 3D et l'interface
+export const PLAYER_COLORS = ['#35e0ff', '#ff4fa3', '#ffd23f', '#7dff6b', '#ff8a3d', '#a77bff', '#ff4d4d', '#e8ecf5'];
 
 // Couleur de fond de chaque bonus
 export const ITEM_COLORS = {

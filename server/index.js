@@ -68,6 +68,9 @@ wss.on('connection', (ws) => {
       case 'skin':
         if (room && member) room.setSkin(member, msg.skin);
         break;
+      case 'map':
+        if (room && member) room.setMap(member, msg.map);
+        break;
       case 'input':
         if (room && member) room.input(member, msg);
         break;

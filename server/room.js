@@ -4,12 +4,13 @@ import { createGame, update, eliminate } from '../src/game/game.js';
 import { createBot } from '../src/game/bot.js';
 import { TICK } from '../src/game/constants.js';
 import { isSkin, randomSkin } from '../src/game/skins.js';
+import { isMap, randomMap } from '../src/game/maps.js';
 
-export const MAX_PLAYERS = 4;
+export const MAX_PLAYERS = 8;
 export const WINS_TO_MATCH = 3; // le premier à 3 manches gagne
 const SNAP_EVERY = 3; // un état envoyé tous les 3 pas = 20 fois par seconde
 const ROUND_PAUSE = 3.5; // secondes entre deux manches
-const BOT_NAMES = ['Robo', 'Pixel', 'Turbo', 'Zébulon'];
+const BOT_NAMES = ['Robo', 'Pixel', 'Turbo', 'Zébulon', 'Bidule', 'Gadget', 'Fusée', 'Biscotte'];
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // sans I ni O, faciles à confondre
 
 export function makeCode(taken) {
@@ -41,6 +42,8 @@ export class Room {
     this.tickCount = 0;
     this.pendingEvents = [];
     this.lastCells = '';
+    this.mapChoice = 'random'; // carte choisie par l'hôte, ou 'random' (une carte au hasard à chaque manche)
+    this.currentMap = null;
   }
 
   get humans() {
@@ -56,7 +59,7 @@ export class Room {
 
   addHuman(ws, name, skin) {
     if (this.phase !== 'lobby') return { error: 'La partie a déjà commencé dans ce salon.' };
-    if (this.members.length >= MAX_PLAYERS) return { error: 'Ce salon est complet (4 joueurs).' };
+    if (this.members.length >= MAX_PLAYERS) return { error: `Ce salon est complet (${MAX_PLAYERS} joueurs).` };
     const m = this.newMember({ name: cleanName(name), ws, bot: false, skin: isSkin(skin) ? skin : randomSkin() });
     if (this.hostId === null) this.hostId = m.id;
     return { member: m };
@@ -74,6 +77,13 @@ export class Room {
     if (this.phase !== 'lobby') return;
     const bot = [...this.members].reverse().find((m) => m.bot);
     if (bot) this.removeMember(bot);
+  }
+
+  setMap(member, map) {
+    if (member.id !== this.hostId || this.phase !== 'lobby') return;
+    if (map !== 'random' && !isMap(map)) return;
+    this.mapChoice = map;
+    this.broadcastLobby();
   }
 
   setSkin(member, skin) {
@@ -139,7 +149,9 @@ export class Room {
       m.held = { dx: 0, dy: 0 };
       m.lastSeq = -1;
     });
+    this.currentMap = this.mapChoice === 'random' ? randomMap(this.currentMap) : this.mapChoice;
     this.state = createGame({
+      map: this.currentMap,
       playerCount: this.members.length,
       seed: Math.floor(Math.random() * 1e9),
       colors: this.members.map((m) => m.color),
@@ -236,6 +248,9 @@ export class Room {
       winsToMatch: WINS_TO_MATCH,
       lastRoundWinner: this.lastRoundWinner,
       roundPause: ROUND_PAUSE,
+      maxPlayers: MAX_PLAYERS,
+      mapChoice: this.mapChoice,
+      currentMap: this.currentMap,
       members: this.members.map((m) => ({
         id: m.id, name: m.name, color: m.color, skin: m.skin, bot: m.bot, wins: m.wins, pid: m.pid,
       })),
@@ -252,6 +267,13 @@ export class Room {
     this.broadcast({
       t: 'snap',
       round: this.round,
+      map: s.map,
+      size: s.size,
+      cols: s.cols,
+      rows: s.rows,
+      doors: s.doors,
+      doorGroup: s.doorGroup,
+      waves: s.waves.map((w) => ({ ...w, timer: r3(w.timer) })),
       time: r3(s.time),
       phase: s.phase,
       winner: s.winner,
@@ -265,6 +287,7 @@ export class Room {
       bombs: s.bombs.map((b) => ({ ...b, timer: r3(b.timer), slide: b.slide && { ...b.slide, progress: r3(b.slide.progress) } })),
       fires: s.fires.map((f) => ({ ...f, timer: r3(f.timer) })),
       items: s.items,
+      lava: s.lava.map((l) => ({ ...l, timer: r3(l.timer) })),
       events: this.pendingEvents,
       acks,
     });
