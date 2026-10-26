@@ -14,6 +14,9 @@
       <div class="hud-right">
         <div id="help"></div>
         <button id="mute" class="icon-btn" aria-label="Couper le son" title="Son (M)"></button>
+        <button id="game-menu" class="icon-btn" aria-label="Menu de la partie" title="Menu (Échap)" hidden>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+        </button>
       </div>
     </div>
 
@@ -66,6 +69,7 @@
           <div id="legend"></div>
 
           <h2>Réglages</h2>
+          <div class="volumes"></div>
           <div class="row">
             <button id="toggle-sound" class="small"></button>
             <button id="toggle-quality" class="small"></button>
@@ -110,6 +114,7 @@
         <div id="round-end" class="screen" hidden>
           <ul id="round-scores" class="player-list"></ul>
           <p class="hint">Manche suivante dans quelques secondes…</p>
+          <button id="leave-round">Quitter le salon</button>
         </div>
 
         <!-- Podium en ligne -->
@@ -120,9 +125,10 @@
           <button id="leave-podium">Quitter le salon</button>
         </div>
 
-        <!-- Pause (hors ligne) -->
+        <!-- Menu pendant la partie (pause hors ligne) -->
         <div id="pause" class="screen" hidden>
-          <button id="resume" class="primary">Reprendre (Échap)</button>
+          <div class="volumes"></div>
+          <button id="resume" class="primary">Reprendre</button>
           <button id="quit">Quitter la partie</button>
         </div>
 

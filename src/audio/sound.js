@@ -64,6 +64,13 @@ export function createSound() {
   const tracks = {}; // chargées seulement quand on en a besoin
   const track = (file) => (tracks[file] ||= new Howl({ src: [`${BASE}${file}.mp3`], loop: true, volume: 0 }));
   let muted = load('kaboom-muted') === '1';
+  // Volumes réglables (0 à 1), gardés d'une visite à l'autre
+  const level = (key) => {
+    const v = Number(load(key));
+    return load(key) !== null && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+  };
+  let musicLevel = level('kaboom-music');
+  let sfxLevel = level('kaboom-sfx');
   let musicOn = false;
   let wanted = 'menu';
   let playing = null;
@@ -80,7 +87,7 @@ export function createSound() {
     }
     const next = track(file);
     if (!next.playing()) next.play();
-    next.fade(next.volume(), MUSIC_VOLUME, 800);
+    next.fade(next.volume(), MUSIC_VOLUME * musicLevel, 800);
     playing = file;
   }
   Howler.mute(muted);
@@ -93,15 +100,36 @@ export function createSound() {
     const now = performance.now();
     if (now - (lastPlayed[name] || 0) < 45) return;
     lastPlayed[name] = now;
+    if (sfxLevel <= 0) return;
     const id = s.play();
     s.rate(rate, id);
-    if (volume !== undefined) s.volume(volume, id);
+    s.volume((volume ?? SFX[name]) * sfxLevel, id);
   }
 
   return {
     play,
     get muted() {
       return muted;
+    },
+    get musicLevel() {
+      return musicLevel;
+    },
+    get sfxLevel() {
+      return sfxLevel;
+    },
+    // Volume de la musique (0 à 1)
+    setMusicLevel(v) {
+      musicLevel = v;
+      store('kaboom-music', String(v));
+      if (playing) {
+        const t = track(playing);
+        t.fade(t.volume(), MUSIC_VOLUME * v, 120);
+      }
+    },
+    // Volume des bruitages (0 à 1)
+    setSfxLevel(v) {
+      sfxLevel = v;
+      store('kaboom-sfx', String(v));
     },
     toggleMute() {
       muted = !muted;

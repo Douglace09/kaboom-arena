@@ -109,6 +109,36 @@ $('toggle-quality').addEventListener('click', () => {
 });
 refreshSettings();
 
+// Réglages du volume : un curseur pour la musique, un pour les bruitages
+// (présents dans le menu principal et dans le menu de partie, toujours synchronisés)
+const VOLUMES = [
+  { key: 'music', label: 'Musique', get: () => sound.musicLevel, set: (v) => sound.setMusicLevel(v) },
+  { key: 'sfx', label: 'Effets', get: () => sound.sfxLevel, set: (v) => sound.setSfxLevel(v) },
+];
+for (const box of document.querySelectorAll('.volumes')) {
+  box.innerHTML = VOLUMES.map(
+    (v) => `<label class="volume"><span>${v.label}</span><input type="range" min="0" max="100" step="5" data-vol="${v.key}" aria-label="Volume ${v.label.toLowerCase()}"><output data-vol-out="${v.key}"></output></label>`
+  ).join('');
+}
+function refreshVolumes() {
+  for (const v of VOLUMES) {
+    const pct = Math.round(v.get() * 100);
+    for (const el of document.querySelectorAll(`[data-vol="${v.key}"]`)) el.value = pct;
+    for (const el of document.querySelectorAll(`[data-vol-out="${v.key}"]`)) el.textContent = `${pct} %`;
+  }
+}
+document.addEventListener('input', (e) => {
+  const v = VOLUMES.find((x) => x.key === e.target.dataset?.vol);
+  if (!v) return;
+  v.set(Number(e.target.value) / 100);
+  if (sound.muted && Number(e.target.value) > 0) toggleMute(); // monter le son le remet
+  refreshVolumes();
+});
+document.addEventListener('change', (e) => {
+  if (e.target.dataset?.vol === 'sfx') sound.play('pickup'); // petit son pour tester le volume
+});
+refreshVolumes();
+
 // La musique démarre au premier clic ou à la première touche (règle des navigateurs)
 const startAudio = () => sound.startMusic();
 window.addEventListener('pointerdown', startAudio, { once: true });
@@ -124,10 +154,10 @@ function startOffline(m) {
   mode = m;
   if (m === 'bot') {
     hud.setContext({ nameOf: (id) => (id === 0 ? 'Toi' : aiCount > 1 ? `IA ${id}` : 'IA'), isMine: (id) => id === 0, soloMine: true, specialKey: () => specialName, wins: () => null });
-    hud.setHelp(touch.enabled ? '' : 'ZQSD ou flèches · Bombe : Espace · Spécial : E · Pause : Échap');
+    hud.setHelp(touch.enabled ? '' : 'ZQSD ou flèches · Bombe : Espace · Spécial : E · Menu : Échap');
   } else {
     hud.setContext({ nameOf: (id) => `J${id + 1}`, isMine: () => true, soloMine: false, specialKey: (id) => (id === 0 ? 'E' : 'Ctrl droit'), wins: () => null });
-    hud.setHelp('J1 : ZQSD, Espace, E · J2 : flèches, Entrée, Ctrl droit · Pause : Échap');
+    hud.setHelp('J1 : ZQSD, Espace, E · J2 : flèches, Entrée, Ctrl droit · Menu : Échap');
   }
   newRound();
 }
@@ -147,6 +177,7 @@ function newRound() {
   paused = false;
   endShown = false;
   screens.hide();
+  $('game-menu').hidden = false;
   renderer.reset(state);
   hud.clear();
   hud.update(state);
@@ -184,9 +215,31 @@ function pause() {
   $('resume').focus();
 }
 function resume() {
+  if (mode === 'online') {
+    // En ligne : on revient à l'écran qui correspond à l'état du salon
+    const lobby = online.lobby;
+    if (lobby?.phase === 'roundEnd') screens.roundEnd(lobby, online.you);
+    else if (lobby?.phase === 'podium') screens.podium(lobby, online.you);
+    else screens.hide();
+    return;
+  }
   paused = false;
-  screens.hide();
+  if (state.phase === 'over') showOfflineEnd();
+  else screens.hide();
 }
+// Menu de partie (bouton en haut à droite ou Échap) : volume, reprendre, quitter
+function openGameMenu() {
+  if (mode === 'menu') return;
+  refreshVolumes();
+  if (mode === 'online') {
+    screens.show('pause', { title: 'Menu', sub: 'La partie continue pendant ce temps' });
+  } else {
+    paused = true;
+    screens.show('pause', { title: 'Pause' });
+  }
+  $('resume').focus();
+}
+$('game-menu').addEventListener('click', openGameMenu);
 window.addEventListener('blur', pause);
 document.addEventListener('visibilitychange', () => document.hidden && pause());
 
@@ -199,14 +252,7 @@ function backToMenu(message = '') {
   sound.setMusic('menu');
   screens.setMenuSkin(mySkin);
   screens.setMenuMap(myMap);
-screens.setMenuMap(myMap);
-
-// Début de manche : musique de la carte et annonce de son nom
-function announceMap(mapId) {
-  const m = getMap(mapId);
-  sound.setMusic(m.id);
-  hud.banner(m.name, m.desc);
-}
+  $('game-menu').hidden = true;
   screens.show('menu', { sub: message });
 }
 
@@ -226,16 +272,20 @@ const online = createOnline({
       wins: (pid) => lobby.members.find((m) => m.pid === pid)?.wins ?? 0,
       winsToMatch: lobby.winsToMatch,
     });
-    hud.setHelp(touch.enabled ? '' : 'ZQSD ou flèches · Bombe : Espace · Spécial : E');
+    hud.setHelp(touch.enabled ? '' : 'ZQSD ou flèches · Bombe : Espace · Spécial : E · Menu : Échap');
     // Jingle quand j'ai gagné la manche
     const me = lobby.members.find((m) => m.id === you);
     if ((lobby.phase === 'roundEnd' || lobby.phase === 'podium') && lastLobbyPhase === 'playing' && lobby.lastRoundWinner === me?.id) sound.play('win');
     lastLobbyPhase = lobby.phase;
+    $('game-menu').hidden = lobby.phase === 'lobby';
+    const menuOpen = screens.current() === 'pause';
     if (lobby.phase === 'lobby') {
       screens.lobby(lobby, you);
       sound.setMusic('menu');
     }
-    else if (lobby.phase === 'playing') screens.hide();
+    else if (lobby.phase === 'playing') {
+      if (!menuOpen) screens.hide(); // on ne ferme pas le menu ouvert par le joueur
+    }
     else if (lobby.phase === 'roundEnd') screens.roundEnd(lobby, you);
     else if (lobby.phase === 'podium') screens.podium(lobby, you);
   },
@@ -268,6 +318,7 @@ $('join-form').addEventListener('submit', (e) => {
 $('cancel-connect').addEventListener('click', () => backToMenu());
 $('leave-lobby').addEventListener('click', () => backToMenu());
 $('leave-podium').addEventListener('click', () => backToMenu());
+$('leave-round').addEventListener('click', () => backToMenu());
 $('start').addEventListener('click', () => online.start());
 $('rematch').addEventListener('click', () => online.rematch());
 $('add-bot').addEventListener('click', () => online.addBot());
@@ -313,12 +364,12 @@ $('quit').addEventListener('click', () => backToMenu());
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
   if (e.code === 'KeyM') toggleMute();
+  if (e.code === 'Escape' && mode !== 'menu') {
+    if (screens.current() === 'pause') resume();
+    else if (!screens.current() || mode === 'online') openGameMenu();
+  }
   if (mode !== 'bot' && mode !== 'local') return;
   if (e.code === 'KeyR' && state.phase === 'over') newRound();
-  if (e.code === 'Escape') {
-    if (!paused) pause();
-    else if (screens.current() === 'pause') resume();
-  }
 });
 
 // ---------- Boucle principale ----------
