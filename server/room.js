@@ -171,7 +171,10 @@ export class Room {
     let dx = dir(msg.dx);
     let dy = dir(msg.dy);
     if (dx && dy) dy = 0;
-    member.queue.push({ seq: Number(msg.seq) || 0, dx, dy, bomb: !!msg.bomb, special: !!msg.special });
+    // direction de secours : perpendiculaire à la direction principale
+    const ax = dy ? dir(msg.ax) : 0;
+    const ay = dx ? dir(msg.ay) : 0;
+    member.queue.push({ seq: Number(msg.seq) || 0, dx, dy, ax, ay, bomb: !!msg.bomb, special: !!msg.special });
     if (member.queue.length > 30) member.queue.shift();
   }
 
@@ -185,7 +188,7 @@ export class Room {
       const next = m.queue.shift();
       inp = { ...next, bomb: inp.bomb || next.bomb, special: inp.special || next.special };
     }
-    m.held = { dx: inp.dx, dy: inp.dy };
+    m.held = { dx: inp.dx, dy: inp.dy, ax: inp.ax, ay: inp.ay };
     m.lastSeq = inp.seq;
     return inp;
   }

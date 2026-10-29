@@ -16,7 +16,8 @@ import { generateArena, idx, inBounds, createRng, setDims, dims } from './grid.j
 import { SKIN_IDS } from './skins.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-const NO_INPUT = { dx: 0, dy: 0, bomb: false, special: false };
+// ax / ay : direction « de secours » (joystick tenu en biais, ou 2 flèches) prise si la voie principale est bloquée
+const NO_INPUT = { dx: 0, dy: 0, ax: 0, ay: 0, bomb: false, special: false };
 
 // Ordre de fermeture de l'arène pendant la mort subite : en spirale depuis les bords
 const spirals = {};
@@ -132,12 +133,13 @@ export function update(state, inputs, dt = TICK) {
     p.moving = false;
     if (p.frozen > 0) continue;
 
-    let { dx, dy, bomb, special } = { ...NO_INPUT, ...inputs[p.id] };
-    if (p.skull?.type === 'inverse') { dx = -dx; dy = -dy; }
+    let { dx, dy, ax, ay, bomb, special } = { ...NO_INPUT, ...inputs[p.id] };
+    if (p.skull?.type === 'inverse') { dx = -dx; dy = -dy; ax = -ax; ay = -ay; }
     if (p.skull?.type === 'autobomb') bomb = true;
     if (p.skull?.type === 'nobomb') bomb = false;
 
     if (special) useSpecial(state, p);
+    [dx, dy] = assistDir(state, p, dx, dy, ax, ay);
     movePlayer(state, p, dx, dy, dt, false);
     if (bomb) placeBomb(state, p);
   }
@@ -180,8 +182,9 @@ export function predictMove(state, p, input, dt = TICK) {
   p.moving = false;
   if (!p.alive) return;
   if (!(p.frozen > 0)) {
-    let { dx, dy } = input;
-    if (p.skull?.type === 'inverse') { dx = -dx; dy = -dy; }
+    let { dx, dy, ax = 0, ay = 0 } = input;
+    if (p.skull?.type === 'inverse') { dx = -dx; dy = -dy; ax = -ax; ay = -ay; }
+    [dx, dy] = assistDir(state, p, dx, dy, ax, ay);
     movePlayer(state, p, dx, dy, dt, true);
   }
   applyBelt(state, p, dt);
@@ -218,6 +221,20 @@ function speedOf(state, p) {
 }
 
 // predict = prédiction côté joueur : on ne pousse pas les bombes (le serveur s'en charge)
+// Aide à la direction : si la voie demandée est bloquée mais que la direction de secours
+// (perpendiculaire) est libre, on tourne tout seul. Sur téléphone, un pouce un peu en biais
+// ne bloque plus le personnage contre un mur.
+function assistDir(state, p, dx, dy, ax, ay) {
+  if (!(dx || dy) || !(ax || ay) || (dx && ax) || (dy && ay)) return [dx, dy];
+  const cx = Math.round(p.x);
+  const cy = Math.round(p.y);
+  if (!isBlocked(state, p, cx + dx, cy + dy)) return [dx, dy];
+  // Encore en route vers le centre de la case : on finit d'abord d'y arriver
+  const off = dx ? (p.x - cx) * dx : (p.y - cy) * dy;
+  if (off < -0.02) return [dx, dy];
+  return isBlocked(state, p, cx + ax, cy + ay) ? [dx, dy] : [ax, ay];
+}
+
 function movePlayer(state, p, dx, dy, dt, predict) {
   if (p.dashTimer > 0 && !dx && !dy) { dx = p.faceX; dy = p.faceY; }
   if (state.map === 'banquise') return moveOnIce(state, p, dx, dy, dt, predict);

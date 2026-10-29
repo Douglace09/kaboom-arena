@@ -157,8 +157,10 @@ export function createOnline({ onLobby, onJoined, onError, onClose }) {
     sendInput(input) {
       if (!lobby || lobby.phase !== 'playing') return;
       seq++;
-      send({ t: 'input', seq, dx: input.dx, dy: input.dy, bomb: input.bomb, special: input.special });
-      pending.push({ seq, dx: input.dx, dy: input.dy });
+      const ax = input.ax || 0;
+      const ay = input.ay || 0;
+      send({ t: 'input', seq, dx: input.dx, dy: input.dy, ax, ay, bomb: input.bomb, special: input.special });
+      pending.push({ seq, dx: input.dx, dy: input.dy, ax: input.dy ? ax : 0, ay: input.dx ? ay : 0 });
       if (pending.length > 120) pending.shift();
       const latest = snaps[snaps.length - 1];
       if (latest && predicted) predictMove(latest.s, predicted, input, TICK);

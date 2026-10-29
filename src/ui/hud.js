@@ -45,10 +45,13 @@ export function createHud() {
   let last = '';
   let lastTimer = '';
   let toastTimeout = null;
+  const touchScreen = window.matchMedia('(pointer: coarse)').matches;
   let portraits = {};
 
   function showToast(html, color) {
-    toast.style.top = `${Math.round(document.getElementById('hud').getBoundingClientRect().bottom + 6)}px`;
+    // Sur téléphone : tout en haut, par-dessus le bandeau des joueurs, pour ne pas cacher l'arène
+    toast.style.top = touchScreen ? '' : `${Math.round(document.getElementById('hud').getBoundingClientRect().bottom + 6)}px`;
+    toast.classList.toggle('compact', touchScreen);
     toast.innerHTML = html;
     toast.style.borderColor = color;
     toast.hidden = false;

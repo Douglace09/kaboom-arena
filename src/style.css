@@ -508,3 +508,32 @@ html, body {
 .volume input[type='range'] { width: 100%; height: 28px; accent-color: #ff4fa3; cursor: pointer; }
 #pause .volumes { margin-bottom: 6px; }
 #game-menu[hidden] { display: none; }
+
+/* Joystick : flèches qui s'allument dans la direction choisie */
+.stick-base .arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 9px solid transparent;
+  opacity: 0.35;
+  transition: opacity 0.08s ease;
+}
+.stick-base .arrow.on { opacity: 1; }
+.stick-base .arrow.up { left: 50%; top: 6px; margin-left: -9px; border-top: 0; border-bottom: 11px solid #fff; }
+.stick-base .arrow.down { left: 50%; bottom: 6px; margin-left: -9px; border-bottom: 0; border-top: 11px solid #fff; }
+.stick-base .arrow.left { top: 50%; left: 6px; margin-top: -9px; border-left: 0; border-right: 11px solid #fff; }
+.stick-base .arrow.right { top: 50%; right: 6px; margin-top: -9px; border-right: 0; border-left: 11px solid #fff; }
+.stick-base .arrow.on.up { border-bottom-color: #35e0ff; }
+.stick-base .arrow.on.down { border-top-color: #35e0ff; }
+.stick-base .arrow.on.left { border-right-color: #35e0ff; }
+.stick-base .arrow.on.right { border-left-color: #35e0ff; }
+
+/* Téléphone : message des bonus tout en haut, petit, par-dessus le bandeau des joueurs */
+#toast.compact {
+  top: calc(6px + env(safe-area-inset-top, 0px));
+  padding: 5px 12px;
+  font-size: 13px;
+  max-width: calc(100% - 32px);
+  z-index: 5;
+}
+#toast.compact .badge { width: 20px; height: 20px; }

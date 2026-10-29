@@ -187,7 +187,7 @@ function myInput() {
   const t = touch.read();
   const k = keyboard.readAny();
   const dir = t.dx || t.dy ? t : k;
-  return { dx: dir.dx, dy: dir.dy, bomb: t.bomb || k.bomb, special: t.special || k.special };
+  return { dx: dir.dx, dy: dir.dy, ax: dir.ax || 0, ay: dir.ay || 0, bomb: t.bomb || k.bomb, special: t.special || k.special };
 }
 
 function offlineInputs() {
